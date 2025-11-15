@@ -1,6 +1,6 @@
 // src/pages/LoginPage.tsx
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom'; // Note: Link needs to be imported
+import { useNavigate } from 'react-router-dom';
 import apiClient from '../services/api'; // Our API client
 import { useAuth } from '../hooks/useAuth'; // Our global auth hook
 import axios from 'axios';
