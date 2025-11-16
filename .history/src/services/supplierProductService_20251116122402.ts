@@ -3,8 +3,9 @@ import apiClient from './api';
 
 // --- Types based on Go API Blueprint ---
 
-// 1. Base Product CORE: Data fields required for creation/update (no 'id')
-interface BaseProductCore {
+// Base Product definition shared with Dropshipper catalog
+interface BaseProduct {
+    id: number;
     name: string;
     description: string;
     price: number; // Supplier's base price
@@ -15,11 +16,6 @@ interface BaseProductCore {
     pkg_length: number;
     pkg_width: number;
     pkg_height: number;
-}
-
-// 2. Base Product: Data fields including the required 'id' (used for fetching/editing existing products)
-interface BaseProduct extends BaseProductCore {
-    id: number;
 }
 
 // Supplier-specific details
@@ -35,11 +31,12 @@ export interface SupplierProduct extends BaseProduct {
     variations?: unknown;
 }
 
-// 3. Product Payload: Extends the CORE data structure, which correctly excludes 'id'
-export interface ProductPayload extends BaseProductCore {
+// Payload structure for creating or updating a product
+export interface ProductPayload extends BaseProduct {
     category_id: number;
     brand_name: string; // We send the name, backend creates the ID if new
     is_variable: boolean;
+    // Note: variations are complex, we'll use 'any' for now but they will be JSON objects
     variations?: unknown;
     action: 'save_draft' | 'submit_for_review'; // Action determines initial status
 }
