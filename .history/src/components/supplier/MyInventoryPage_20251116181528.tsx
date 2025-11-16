@@ -73,9 +73,6 @@ const MyInventoryPage: React.FC = () => {
             // Re-fetch to confirm deletion and handle any list changes
             await fetchInventory();
         } catch (err) {
-            // FIX: Use the 'err' variable by logging it
-            console.error("Delete inventory item failed:", err);
-            
             setError(`Failed to delete item: ${itemName}. Please try again.`);
             // If deletion failed, re-fetch to restore the list
             fetchInventory();
