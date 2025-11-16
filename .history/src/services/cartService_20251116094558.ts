@@ -75,29 +75,3 @@ export const removeFromCart = async (productId: number): Promise<void> => {
   // DELETE /v1/dropshipper/cart/items/:product_id
   await apiClient.delete(`/dropshipper/cart/items/${productId}`);
 };
-
-interface CheckoutPayload {
-  // In a full application, this would include shipping options, payment method, etc.
-  // For now, we will assume a simple address submission.
-  shipping_address: string;
-}
-
-interface CheckoutResponse {
-  order_id: string; // The ID of the newly created order
-  status: 'processing' | 'on-hold'; // Status depends on wallet balance
-}
-
-/**
- * @description Calls the POST /v1/dropshipper/checkout endpoint to process the cart into an order.
- * @param {string} shippingAddress - The delivery address for the order.
- * @returns {Promise<CheckoutResponse>} - The created order ID and status.
- */
-export const processCheckout = async (shippingAddress: string): Promise<CheckoutResponse> => {
-  const payload: CheckoutPayload = {
-    shipping_address: shippingAddress,
-  };
-  
-  // POST /v1/dropshipper/checkout
-  const response = await apiClient.post<CheckoutResponse>('/dropshipper/checkout', payload);
-  return response.data;
-};
