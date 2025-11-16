@@ -1,5 +1,6 @@
 // src/pages/DashboardPage.tsx
 
+import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth'; // Assuming this hook exists
 import MyInventoryPage from '../components/supplier/MyInventoryPage'; // NEW IMPORT
