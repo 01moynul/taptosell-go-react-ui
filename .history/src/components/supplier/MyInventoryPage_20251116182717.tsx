@@ -4,7 +4,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import type { InventoryItem } from '../../types/CoreTypes';
 import { getMyInventory, deleteInventoryItem } from '../../api/InventoryHandlers';
 import InventoryForm from './InventoryForm'; // NEW IMPORT
-import { promoteInventoryItem } from '../../api/InventoryHandlers'; // NEW IMPORT
 
 /**
  * The main component for the Supplier's Private Inventory dashboard.
