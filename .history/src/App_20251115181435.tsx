@@ -4,8 +4,7 @@ import { Routes, Route } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
-import DashboardPage from './pages/DashboardPage';
-import CatalogPage from './pages/CatalogPage';
+import DashboardPage from './pages/DashboardPage'; 
 // import CatalogPage from './pages/CatalogPage'; // Will be created next
 
 function App() {
@@ -17,7 +16,7 @@ function App() {
       
       {/* Protected Routes - These need Auth Middleware */}
       <Route path="/dashboard" element={<DashboardPage />} />
-      <Route path="/catalog" element={<CatalogPage />}  />
+      {/* <Route path="/catalog" element={<CatalogPage />} /> */}
 
       {/* Default route: Redirect to Login as unauthorized users need to sign in */}
       <Route path="/" element={<LoginPage />} />

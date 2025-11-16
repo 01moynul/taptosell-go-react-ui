@@ -18,11 +18,8 @@ interface AuthContextType {
   logout: () => void;
 }
 
-// 1. Export the Context so our hook can use it
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
 // Define the "Provider" component
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: { ReactNode }) {
   // --- MODIFIED CODE START ---
 
   // Initialize state by checking localStorage for the token
