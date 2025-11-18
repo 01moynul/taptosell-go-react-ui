@@ -97,7 +97,7 @@ function DashboardPage() {
         );
     };
 
-// --- MAIN RENDER LOGIC ---
+    // --- MAIN RENDER LOGIC ---
 
     // Display appropriate dashboard based on user role
     if (user.role === 'supplier') {
@@ -109,16 +109,6 @@ function DashboardPage() {
         );
     } 
     
-    // Manager/Operational Admin & Super Admin Dashboard
-    if (user.role === 'manager' || user.role === 'administrator') {
-        return (
-            <div className="taptosell-container">
-                <h1>Manager Dashboard</h1>
-                {renderManagerContent()}
-            </div>
-        );
-    }
-
     // Placeholder for dropshipper dashboard
     if (user.role === 'dropshipper') {
          return (
@@ -128,7 +118,7 @@ function DashboardPage() {
             </div>
         );
     }
-
+    
     // Default fallback
     return (
         <div className="taptosell-container">
