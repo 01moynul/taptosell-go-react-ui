@@ -1,3 +1,9 @@
+# Security: Never commit environment variables
+.env
+
+# Local Editor History (VS Code extensions)
+.history/
+
 # Logs
 logs
 *.log
@@ -22,3 +28,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Vendor directory
+vendor/
