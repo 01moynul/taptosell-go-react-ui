@@ -71,7 +71,6 @@ function DashboardPage() {
         const navItems = [
             { id: 'products', label: 'Product Approval Queue', Component: ProductApprovalQueue },
             { id: 'withdrawals', label: 'Withdrawal Request Queue', Component: WithdrawalRequestQueue },
-            { id: 'appeals', label: 'Price Appeal Queue', Component: PriceAppealQueue },
             // Add other manager views here (e.g., 'users', 'withdrawals', 'settings')
         ];
 
