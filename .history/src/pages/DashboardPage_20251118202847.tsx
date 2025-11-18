@@ -9,7 +9,6 @@ import ProductApprovalQueue from '../components/manager/ProductApprovalQueue';
 import WithdrawalRequestQueue from '../components/manager/WithdrawalRequestQueue';
 import PriceAppealQueue from '../components/manager/PriceAppealQueue';
 import GlobalSettingsPage from '../components/manager/GlobalSettingsPage';
-import GlobalTaxonomyManager from '../components/manager/GlobalTaxonomyManager';
 
 /**
  * Helper to get the current 'view' parameter from the URL.
@@ -67,15 +66,15 @@ function DashboardPage() {
         );
     };
 
-// Defines the content for the Operational Admin/Manager role
+    // Defines the content for the Operational Admin/Manager role
     const renderManagerContent = () => {
         // Defines the Manager's main navigation menu
         const navItems = [
             { id: 'products', label: 'Product Approval Queue', Component: ProductApprovalQueue },
             { id: 'withdrawals', label: 'Withdrawal Request Queue', Component: WithdrawalRequestQueue },
             { id: 'appeals', label: 'Price Appeal Queue', Component: PriceAppealQueue },
-            { id: 'taxonomy', label: 'Categories & Brands', Component: GlobalTaxonomyManager },
             { id: 'settings', label: 'Global Settings', Component: GlobalSettingsPage },
+            // Add other manager views here (e.g., 'users', 'withdrawals', 'settings')
         ];
 
         // Find the component to render based on the URL parameter

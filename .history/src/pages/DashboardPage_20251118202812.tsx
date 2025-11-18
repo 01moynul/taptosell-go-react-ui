@@ -9,7 +9,6 @@ import ProductApprovalQueue from '../components/manager/ProductApprovalQueue';
 import WithdrawalRequestQueue from '../components/manager/WithdrawalRequestQueue';
 import PriceAppealQueue from '../components/manager/PriceAppealQueue';
 import GlobalSettingsPage from '../components/manager/GlobalSettingsPage';
-import GlobalTaxonomyManager from '../components/manager/GlobalTaxonomyManager';
 
 /**
  * Helper to get the current 'view' parameter from the URL.
@@ -67,15 +66,15 @@ function DashboardPage() {
         );
     };
 
-// Defines the content for the Operational Admin/Manager role
+    // Defines the content for the Operational Admin/Manager role
     const renderManagerContent = () => {
         // Defines the Manager's main navigation menu
         const navItems = [
             { id: 'products', label: 'Product Approval Queue', Component: ProductApprovalQueue },
             { id: 'withdrawals', label: 'Withdrawal Request Queue', Component: WithdrawalRequestQueue },
             { id: 'appeals', label: 'Price Appeal Queue', Component: PriceAppealQueue },
-            { id: 'taxonomy', label: 'Categories & Brands', Component: GlobalTaxonomyManager },
             { id: 'settings', label: 'Global Settings', Component: GlobalSettingsPage },
+            // Add other manager views here (e.g., 'users', 'withdrawals', 'settings')
         ];
 
         // Find the component to render based on the URL parameter
@@ -146,3 +145,58 @@ function DashboardPage() {
 }
 
 export default DashboardPage;
+
+// ... existing code ...
+
+/**
+ * Interface for a Global Product Category (Public Marketplace).
+ * Corresponds to Go model models.Category.
+ * API: GET /v1/categories
+ */
+export interface Category {
+    id: number;
+    name: string;
+    parentId?: number; // Optional/Nullable. ID of the parent category.
+}
+
+/**
+ * Interface for the response from GET /v1/categories
+ */
+export interface GetCategoriesResponse {
+    categories: Category[];
+}
+
+/**
+ * Payload for creating a new Global Category.
+ * API: POST /v1/categories
+ */
+export interface CreateCategoryPayload {
+    name: string;
+    parentId?: number; // Optional. 0 or null if it's a root category.
+}
+
+/**
+ * Interface for a Global Product Brand (Public Marketplace).
+ * Corresponds to Go model models.Brand.
+ * API: GET /v1/brands
+ */
+export interface Brand {
+    id: number;
+    name: string;
+    // Add 'icon' or 'logo' fields here if the backend supports them in the future.
+}
+
+/**
+ * Interface for the response from GET /v1/brands
+ */
+export interface GetBrandsResponse {
+    brands: Brand[];
+}
+
+/**
+ * Payload for creating a new Global Brand.
+ * API: POST /v1/brands
+ */
+export interface CreateBrandPayload {
+    name: string;
+}
