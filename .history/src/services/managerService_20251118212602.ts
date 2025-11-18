@@ -4,7 +4,7 @@ import api from './api';
 import type { PendingProduct, RejectProductPayload , WithdrawalRequest ,
                 ProcessWithdrawalPayload, PriceAppeal, ProcessPriceAppealPayload ,
                 GetSettingsResponse , UpdateSettingsPayload, User,
-                GetUsersResponse, UpdatePenaltyPayload } from '../types/CoreTypes';
+    GetUsersResponse, UpdatePenaltyPayload } from '../types/CoreTypes';
 
 
 // API endpoints used by the Manager dashboard
@@ -195,47 +195,6 @@ export const updateGlobalSettings = async (
         return response.data.message;
     } catch (err) {
         console.error('Error updating global settings:', err);
-        throw err;
-    }
-};
-
-// src/services/managerService.ts (User Management Functions)
-
-/**
- * Fetches a list of all users (Dropshippers, Suppliers, etc.) for the Manager.
- * Corresponds to GET /v1/manager/users
- * @returns A promise that resolves to an array of User objects.
- */
-export const getUsers = async (): Promise<User[]> => {
-    try {
-        // API returns { users: [...] }
-        const response = await api.get<GetUsersResponse>('/v1/manager/users');
-        return response.data.users;
-    } catch (err) {
-        console.error('Error fetching users:', err);
-        throw err;
-    }
-};
-
-/**
- * Manually updates a user's penalty strike count.
- * Corresponds to PATCH /v1/manager/users/:id/penalty
- * @param id The ID of the user to update.
- * @param payload The action ('increment', 'decrement', 'reset') and optional reason.
- * @returns A promise that resolves to a success message.
- */
-export const updateUserPenalty = async (
-    id: number,
-    payload: UpdatePenaltyPayload
-): Promise<string> => {
-    try {
-        const response = await api.patch<{ message: string }>(
-            `/v1/manager/users/${id}/penalty`,
-            payload
-        );
-        return response.data.message;
-    } catch (err) {
-        console.error(`Error updating penalty for user ID ${id}:`, err);
         throw err;
     }
 };

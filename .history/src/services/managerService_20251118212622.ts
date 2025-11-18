@@ -4,7 +4,7 @@ import api from './api';
 import type { PendingProduct, RejectProductPayload , WithdrawalRequest ,
                 ProcessWithdrawalPayload, PriceAppeal, ProcessPriceAppealPayload ,
                 GetSettingsResponse , UpdateSettingsPayload, User,
-                GetUsersResponse, UpdatePenaltyPayload } from '../types/CoreTypes';
+    GetUsersResponse, UpdatePenaltyPayload } from '../types/CoreTypes';
 
 
 // API endpoints used by the Manager dashboard
