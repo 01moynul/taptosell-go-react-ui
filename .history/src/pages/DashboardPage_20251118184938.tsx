@@ -73,7 +73,6 @@ function DashboardPage() {
             { id: 'products', label: 'Product Approval Queue', Component: ProductApprovalQueue },
             { id: 'withdrawals', label: 'Withdrawal Request Queue', Component: WithdrawalRequestQueue },
             { id: 'appeals', label: 'Price Appeal Queue', Component: PriceAppealQueue },
-            { id: 'settings', label: 'Global Settings', Component: GlobalSettingsPage },
             // Add other manager views here (e.g., 'users', 'withdrawals', 'settings')
         ];
 
