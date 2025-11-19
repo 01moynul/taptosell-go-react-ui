@@ -1,316 +1,264 @@
 // src/components/supplier/ProductForm.tsx
-import { useState } from 'react';
-import { type SupplierProduct, type ProductPayload, createProduct, updateProduct } from '../../services/supplierProductService';
-import { type TaxonomyItem } from '../../services/taxonomyService';
-import ProductPreviewCard from './ProductPreviewCard'; // Import the Preview Card
-import VariationManager from './VariationManager'; // 1. Import the Variation Manager
-import axios from 'axios';
+import React, { useEffect } from 'react';
 
-// Define the Props for the form component
-interface ProductFormProps {
-    isEditMode: boolean;
-    initialProduct?: SupplierProduct;
-    categories: TaxonomyItem[];
-    brands: TaxonomyItem[];
+// --- Data Types ---
+export interface VariationGroup {
+  id: number;
+  name: string;
+  options: string[];
 }
 
-const ProductForm: React.FC<ProductFormProps> = ({ isEditMode, initialProduct, categories, brands }) => {
-    // --- 1. Form State Initialization ---
-    // Use initialProduct for edit mode, or empty defaults for add mode
-    const [formData, setFormData] = useState<Partial<ProductPayload>>({
-        // Base required fields
-        name: initialProduct?.name || '',
-        description: initialProduct?.description || '',
-        price: initialProduct?.price ?? 0,
-        stock: initialProduct?.stock ?? 0,
-        weight: initialProduct?.weight ?? 0,
-        pkg_length: initialProduct?.pkg_length ?? 0,
-        pkg_width: initialProduct?.pkg_width ?? 0,
-        pkg_height: initialProduct?.pkg_height ?? 0,
+export interface VariationOption {
+  id: string;
+  option1: string; 
+  option2?: string;
+  price: number;
+  stock: number;
+  sku: string;
+}
 
-        // ProductPayload fields
-        category_id: initialProduct?.category_id || categories[0]?.id || 0,
-        // Find the brand name from the props using the ID received from the API (initialProduct.brand_id)
-        brand_name: initialProduct 
-            ? brands.find(b => b.id === initialProduct.brand_id)?.name || ''
-            : brands[0]?.name || '', // Default for Add Mode
-        is_variable: initialProduct?.is_variable || false,
-        // Optional fields
-        video_url: initialProduct?.video_url || '',
-        variations: initialProduct?.variations, // This line is now safe
-    });
+export interface ProductFormData {
+  name: string;
+  description: string;
+  price: number;
+  sku: string; // <--- ADDED THIS
+  category: string;
+  brand: string;
+  stock: number;
+  weight: number;
+  is_variable: boolean;
+  variations: VariationGroup[];
+  variation_options: VariationOption[];
+  pkg_length: number;
+  pkg_width: number;
+  pkg_height: number;
+}
+
+interface ProductFormProps {
+  data: ProductFormData;
+  onChange: (data: ProductFormData) => void;
+  activeTab: 'basic' | 'sales' | 'variations' | 'shipping';
+  onTabChange: (tab: 'basic' | 'sales' | 'variations' | 'shipping') => void;
+}
+
+const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, onTabChange }) => {
+
+  // Helper to update specific fields
+  const updateField = (field: keyof ProductFormData, value: ProductFormData[keyof ProductFormData]) => {
+    onChange({ ...data, [field]: value });
+  };
+
+  // Variation Logic
+  useEffect(() => {
+    if (!data.is_variable) return;
+    if (data.variations.length === 0) return;
+
+    const group1 = data.variations[0];
+    const group2 = data.variations[1];
+    let newOptions: VariationOption[] = [];
+
+    if (data.variations.length === 1 && group1.options.length > 0) {
+      newOptions = group1.options.map(opt => ({
+        id: opt,
+        option1: opt,
+        price: data.price,
+        stock: 0,
+        sku: data.sku ? `${data.sku}-${opt}` : '' // Auto-generate SKU suffix
+      }));
+    } else if (data.variations.length === 2 && group1.options.length > 0 && group2?.options.length > 0) {
+      group1.options.forEach(opt1 => {
+        group2.options.forEach(opt2 => {
+          newOptions.push({
+            id: `${opt1}-${opt2}`,
+            option1: opt1,
+            option2: opt2,
+            price: data.price,
+            stock: 0,
+            sku: data.sku ? `${data.sku}-${opt1}-${opt2}` : ''
+          });
+        });
+      });
+    }
     
-    const [isSaving, setIsSaving] = useState(false);
-    const [message, setMessage] = useState('');
-    const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
+    if (newOptions.length !== data.variation_options.length) {
+       updateField('variation_options', newOptions);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.variations, data.is_variable, data.sku]); // Added SKU to dependencies
 
-    // State for the complex variations data pushed from the manager component (Line 40)
-    // We use formData.variations as the source of truth, but this state can be used for debugging if needed.
-    const handleVariationsChange = (variants: unknown) => {
-        // **DELETED: setVariationData(variants);**
-        // Push the new variations data up to the main form state
-        setFormData(prev => ({ ...prev, variations: variants }));
-    };
-    
-    
-    // Helper for input changes
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { id, value, type } = e.target;
-        // Handle number types specifically
-        let parsedValue: string | number | undefined = value;
-        if (type === 'number' || id === 'category_id' || id.startsWith('pkg_') || id === 'weight' || id === 'price' || id === 'stock') {
-            // Use nullish coalescing to set to 0 if input is empty, ensuring required fields are number
-            parsedValue = parseFloat(value) || 0;
-        }
-        
-        setFormData(prev => ({ 
-            ...prev, 
-            [id]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : parsedValue 
-        }));
-    };
+  // Handlers
+  const addVariationGroup = () => {
+    if (data.variations.length < 2) {
+      const newGroups = [...data.variations, { id: Date.now(), name: 'Color', options: [] }];
+      updateField('variations', newGroups);
+    }
+  };
 
+  const addOptionToGroup = (groupIndex: number, option: string) => {
+    if (!option) return;
+    const newGroups = [...data.variations];
+    if (!newGroups[groupIndex].options.includes(option)) {
+      newGroups[groupIndex].options.push(option);
+      updateField('variations', newGroups);
+    }
+  };
 
-    // --- 2. Form Submission Handler ---
-    const handleSubmit = async (e: React.FormEvent, action: 'save_draft' | 'submit_for_review') => {
-        e.preventDefault();
-        setMessage('');
-        setIsSaving(true);
-        
-        try {
-            // Explicitly define all fields required by ProductPayload, guaranteeing non-null values for the API
-            const payload: ProductPayload = {
-                // BaseProduct required fields
-                name: formData.name || 'Untitled Product',
-                description: formData.description || '',
-                price: formData.price ?? 0,
-                stock: formData.stock ?? 0,
-                weight: formData.weight ?? 0,
-                pkg_length: formData.pkg_length ?? 0,
-                pkg_width: formData.pkg_width ?? 0,
-                pkg_height: formData.pkg_height ?? 0,
-                
-                // ProductPayload required fields
-                action: action, 
-                category_id: formData.category_id || 0,
-                brand_name: formData.brand_name || '',
-                is_variable: formData.is_variable || false,
+  return (
+    <div>
+      {/* Tabs Header */}
+      <div className="flex border-b mb-6 overflow-x-auto">
+        {['basic', 'sales', 'variations', 'shipping'].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => onTabChange(tab as 'basic' | 'sales' | 'variations' | 'shipping')}
+            className={`px-4 py-3 text-sm font-medium capitalize whitespace-nowrap border-b-2 transition-colors ${
+              activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab === 'sales' ? 'Sales & Pricing' : tab}
+          </button>
+        ))}
+      </div>
 
-                // Optional fields
-                video_url: formData.video_url,
-                variations: formData.variations, 
-            };
+      {/* TAB 1: BASIC INFO */}
+      {activeTab === 'basic' && (
+        <div className="space-y-4 animate-fade-in">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
+            <input
+              type="text"
+              className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+              value={data.name}
+              onChange={(e) => updateField('name', e.target.value)}
+              placeholder="e.g., Nike Air Max 90"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none h-32"
+              value={data.description}
+              onChange={(e) => updateField('description', e.target.value)}
+              placeholder="Describe your product..."
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <select 
+                 className="w-full p-2 border rounded"
+                 value={data.category}
+                 onChange={(e) => updateField('category', e.target.value)}
+              >
+                <option value="">Select...</option>
+                {/* FIX: Use ID numbers (1, 2, 3) so backend accepts them */}
+                <option value="1">Electronics</option>
+                <option value="2">Fashion</option>
+                <option value="3">Home & Living</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+              <input type="text" className="w-full p-2 border rounded" value={data.brand} onChange={(e) => updateField('brand', e.target.value)} placeholder="e.g., Generic" />
+            </div>
+          </div>
+        </div>
+      )}
 
-            if (isEditMode && initialProduct?.id) {
-                // Check if price/stock fields are disabled due to being variable
-                if (payload.is_variable) {
-                    // Send 0 for simple price/stock if it's a variable product (API ignores this anyway)
-                    payload.price = 0;
-                    payload.stock = 0;
-                }
-                
-                await updateProduct(initialProduct.id, payload);
-                setMessage(`Product updated successfully! Status: ${action.split('_').join(' ').toUpperCase()}`);
-            } else {
-                const response = await createProduct(payload);
-                setMessage(`Product created successfully! ID: ${response.product_id}. Status: ${action.split('_').join(' ').toUpperCase()}`);
-                // In a real app, you would redirect to the edit page for the new product
-            }
-            setMessageType('success');
-        } catch (error) {
-            // Improve error message display
-            const errorMessage = axios.isAxiosError(error) && error.response?.data?.message 
-                ? error.response.data.message 
-                : (error instanceof Error ? error.message : 'Unknown error');
+      {/* TAB 2: SALES & PRICING (Added SKU) */}
+      {activeTab === 'sales' && (
+        <div className="space-y-4 animate-fade-in">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Your Price (RM)</label>
+              <input type="number" className="w-full p-2 border rounded" value={data.price} onChange={(e) => updateField('price', parseFloat(e.target.value))} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Stock Quantity</label>
+              <input type="number" className="w-full p-2 border rounded" value={data.stock} disabled={data.is_variable} onChange={(e) => updateField('stock', parseInt(e.target.value))} />
+              {data.is_variable && <p className="text-xs text-red-500 mt-1">Managed by Variations</p>}
+            </div>
+          </div>
+          {/* ADDED SKU FIELD HERE */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">SKU (Stock Keeping Unit)</label>
+            <input 
+              type="text" 
+              className="w-full p-2 border rounded uppercase" 
+              value={data.sku} 
+              onChange={(e) => updateField('sku', e.target.value)} 
+              placeholder="e.g., NK-AIRMAX-90"
+            />
+          </div>
+        </div>
+      )}
 
-            setMessage(`Operation failed: ${errorMessage}`);
-            setMessageType('error');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    // --- 3. Render Form Structure ---
-    return (
-        <form onSubmit={(e) => handleSubmit(e, 'submit_for_review')} className="flex flex-col lg:flex-row gap-8">
-            {/* Left Column: Form Fields */}
-            <div className="lg:w-2/3 space-y-6">
-                {message && (
-                    <div className={`p-4 rounded ${messageType === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {message}
-                    </div>
+      {/* TAB 3: VARIATIONS */}
+      {activeTab === 'variations' && (
+        <div className="space-y-6 animate-fade-in">
+           <div className="flex items-center justify-between bg-gray-50 p-3 rounded border">
+              <span className="font-medium text-gray-700">Enable Variations?</span>
+              <button onClick={() => updateField('is_variable', !data.is_variable)} className={`px-3 py-1 rounded text-sm font-bold ${data.is_variable ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>{data.is_variable ? 'YES' : 'NO'}</button>
+           </div>
+           {data.is_variable && (
+             <div>
+                {data.variations.map((group, idx) => (
+                  <div key={group.id} className="mb-4 p-4 border rounded bg-white shadow-sm">
+                     <div className="flex justify-between mb-2">
+                        <label className="font-medium text-sm">Variation {idx + 1} Name</label>
+                        <select className="text-sm border rounded p-1" value={group.name} onChange={(e) => { const newGroups = [...data.variations]; newGroups[idx].name = e.target.value; updateField('variations', newGroups); }}>
+                          <option>Color</option><option>Size</option><option>Material</option>
+                        </select>
+                     </div>
+                     <div className="flex gap-2 flex-wrap mb-2">
+                        {group.options.map(opt => (
+                          <span key={opt} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold flex items-center gap-1">{opt}<button onClick={() => { const newGroups = [...data.variations]; newGroups[idx].options = newGroups[idx].options.filter(o => o !== opt); updateField('variations', newGroups); }} className="hover:text-red-600">×</button></span>
+                        ))}
+                     </div>
+                     <div className="flex gap-2">
+                        <input type="text" placeholder="Add option (e.g. Red)..." className="border rounded p-1 text-sm flex-1" onKeyDown={(e) => { if(e.key === 'Enter') { addOptionToGroup(idx, (e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; }}} />
+                     </div>
+                  </div>
+                ))}
+                {data.variations.length < 2 && <button onClick={addVariationGroup} className="text-sm text-blue-600 hover:underline">+ Add Another Variation Layer</button>}
+                {/* TABLE */}
+                {data.variation_options.length > 0 && (
+                  <div className="mt-6 overflow-x-auto">
+                    <table className="w-full text-sm text-left border-collapse">
+                      <thead className="bg-gray-100 text-gray-600">
+                        <tr><th className="p-2 border">Variation</th><th className="p-2 border">Price</th><th className="p-2 border">Stock</th><th className="p-2 border">SKU</th></tr>
+                      </thead>
+                      <tbody>
+                        {data.variation_options.map((row, idx) => (
+                          <tr key={row.id} className="border-b hover:bg-gray-50">
+                            <td className="p-2 font-medium">{row.option1} {row.option2 ? ` / ${row.option2}` : ''}</td>
+                            <td className="p-2"><input type="number" className="w-20 border rounded p-1" value={row.price} onChange={(e) => { const newRows = [...data.variation_options]; newRows[idx].price = parseFloat(e.target.value); updateField('variation_options', newRows); }} /></td>
+                            <td className="p-2"><input type="number" className="w-20 border rounded p-1" value={row.stock} onChange={(e) => { const newRows = [...data.variation_options]; newRows[idx].stock = parseInt(e.target.value); updateField('variation_options', newRows); }} /></td>
+                            <td className="p-2"><input type="text" className="w-24 border rounded p-1" value={row.sku} onChange={(e) => { const newRows = [...data.variation_options]; newRows[idx].sku = e.target.value; updateField('variation_options', newRows); }} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
+             </div>
+           )}
+        </div>
+      )}
 
-                {/* General Information Section */}
-                <div className="bg-white p-6 rounded-lg shadow-md space-y-4">
-                    <h3 className="text-xl font-semibold border-b pb-2">General Information</h3>
-                    
-                    {/* Product Name */}
-                    <div>
-                        <label htmlFor="name" className="block text-sm font-medium text-gray-700">Product Name</label>
-                        <input type="text" id="name" value={formData.name || ''} 
-                            onChange={handleChange}
-                            required className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                        />
-                    </div>
-
-                    {/* Description */}
-                    <div>
-                        <label htmlFor="description" className="block text-sm font-medium text-gray-700">Product Description</label>
-                        <textarea id="description" value={formData.description || ''} 
-                            onChange={handleChange}
-                            rows={4} className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                        />
-                    </div>
-                    
-                    {/* Video URL */}
-                    <div>
-                        <label htmlFor="video_url" className="block text-sm font-medium text-gray-700">Product Video URL (Optional)</label>
-                        <input type="text" id="video_url" value={formData.video_url || ''} 
-                            onChange={handleChange}
-                            className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                        />
-                    </div>
-                </div>
-
-                {/* Category & Brand Section */}
-                <div className="bg-white p-6 rounded-lg shadow-md space-y-4">
-                    <h3 className="text-xl font-semibold border-b pb-2">Category & Brand</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        {/* Category Dropdown */}
-                        <div>
-                            <label htmlFor="category_id" className="block text-sm font-medium text-gray-700">Category</label>
-                            <select id="category_id" value={formData.category_id || 0} 
-                                onChange={handleChange}
-                                required className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                            >
-                                <option value={0} disabled>Select a Category</option>
-                                {categories.map(cat => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Brand Input (Send Name to Backend) */}
-                        <div>
-                            <label htmlFor="brand_name" className="block text-sm font-medium text-gray-700">Brand Name (New or Existing)</label>
-                            <input type="text" id="brand_name" value={formData.brand_name || ''} 
-                                onChange={handleChange}
-                                required className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                                placeholder="e.g., Apple, Generic"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Variations / Simple Product Toggle Section */}
-                <div className="bg-white p-6 rounded-lg shadow-md">
-                    <h3 className="text-xl font-semibold border-b pb-2">Pricing & Variations</h3>
-                    
-                    {/* Simple Product Fields (Conditionally Visible) */}
-                    {!formData.is_variable && (
-                        <div className="grid grid-cols-3 gap-4 mt-4">
-                            <div>
-                                <label htmlFor="price" className="block text-sm font-medium text-gray-700">Price (RM)</label>
-                                <input type="number" id="price" value={formData.price || 0} 
-                                    onChange={handleChange}
-                                    min="0" step="0.01" required
-                                    className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="stock" className="block text-sm font-medium text-gray-700">Stock</label>
-                                <input type="number" id="stock" value={formData.stock || 0} 
-                                    onChange={handleChange}
-                                    min="0" required
-                                    className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                                />
-                            </div>
-                        </div>
-                    )}
-                    
-                    {/* Toggle for Variable Product */}
-                    <div className={`flex items-center ${!formData.is_variable ? 'mt-4' : ''}`}>
-                        <input id="is_variable" type="checkbox" checked={formData.is_variable || false}
-                            onChange={handleChange}
-                            className="h-4 w-4 text-green-600 border-gray-300 rounded"
-                        />
-                        <label htmlFor="is_variable" className="ml-2 block text-sm text-gray-900">
-                            Enable Product Variations (Size, Color, etc.)
-                        </label>
-                    </div>
-                    
-                    {/* Variation Management UI will be conditionally rendered here */}
-                    {formData.is_variable && (
-                        <div className="mt-4">
-                            <VariationManager
-                                onVariationsChange={handleVariationsChange} // Pushes data up
-                                initialVariations={initialProduct?.variations} // Passes initial data for editing
-                                isEditing={isEditMode}
-                            />
-                        </div>
-                    )}
-                </div>
-
-                {/* Packaging and Submission Section */}
-                <div className="bg-white p-6 rounded-lg shadow-md space-y-4">
-                    <h3 className="text-xl font-semibold border-b pb-2">Packaging & Logistics</h3>
-                    
-                    <div className="grid grid-cols-4 gap-4">
-                        <div>
-                            <label htmlFor="weight" className="block text-sm font-medium text-gray-700">Weight (kg)</label>
-                            <input type="number" id="weight" value={formData.weight || 0} min="0" step="0.01" 
-                                onChange={handleChange}
-                                required className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="pkg_length" className="block text-sm font-medium text-gray-700">Length (cm)</label>
-                            <input type="number" id="pkg_length" value={formData.pkg_length || 0} min="0" step="0.01"
-                                onChange={handleChange}
-                                required className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="pkg_width" className="block text-sm font-medium text-gray-700">Width (cm)</label>
-                            <input type="number" id="pkg_width" value={formData.pkg_width || 0} min="0" step="0.01" 
-                                onChange={handleChange}
-                                required className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="pkg_height" className="block text-sm font-medium text-gray-700">Height (cm)</label>
-                            <input type="number" id="pkg_height" value={formData.pkg_height || 0} min="0" step="0.01" 
-                                onChange={handleChange}
-                                required className="mt-1 block w-full border border-gray-300 p-2 rounded-md"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Submission Buttons */}
-                <div className="pt-4 flex justify-end space-x-3">
-                    <button type="button" onClick={(e) => handleSubmit(e, 'save_draft')}
-                        disabled={isSaving}
-                        className="bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600 disabled:opacity-50"
-                    >
-                        {isSaving ? 'Saving...' : 'Save as Draft'}
-                    </button>
-                    
-                    <button type="submit" // Default action is 'submit_for_review'
-                        disabled={isSaving}
-                        className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
-                    >
-                        {isSaving ? 'Submitting...' : 'Submit for Manager Review'}
-                    </button>
-                </div>
-            </div>
-
-            {/* Right Column: Preview Card */}
-            <div className="lg:w-1/3">
-                <ProductPreviewCard formData={formData} />
-            </div>
-        </form>
-    );
+      {/* TAB 4: SHIPPING */}
+      {activeTab === 'shipping' && (
+        <div className="space-y-4 animate-fade-in">
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">Weight (grams)</label><input type="number" className="w-full p-2 border rounded" value={data.weight} onChange={(e) => updateField('weight', parseFloat(e.target.value))} /></div>
+          <div className="grid grid-cols-3 gap-4">
+            <div><label className="block text-xs text-gray-500 mb-1">Length (cm)</label><input type="number" className="w-full p-2 border rounded" value={data.pkg_length} onChange={(e) => updateField('pkg_length', parseFloat(e.target.value))} /></div>
+            <div><label className="block text-xs text-gray-500 mb-1">Width (cm)</label><input type="number" className="w-full p-2 border rounded" value={data.pkg_width} onChange={(e) => updateField('pkg_width', parseFloat(e.target.value))} /></div>
+            <div><label className="block text-xs text-gray-500 mb-1">Height (cm)</label><input type="number" className="w-full p-2 border rounded" value={data.pkg_height} onChange={(e) => updateField('pkg_height', parseFloat(e.target.value))} /></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default ProductForm;

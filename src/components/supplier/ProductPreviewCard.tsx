@@ -1,52 +1,88 @@
 // src/components/supplier/ProductPreviewCard.tsx
 import React from 'react';
-import { type ProductPayload } from '../../services/supplierProductService';
+import type { ProductFormData } from './ProductForm';
 
-interface ProductPreviewProps {
-    formData: Partial<ProductPayload>;
+interface ProductPreviewCardProps {
+  data: ProductFormData;
 }
 
-const ProductPreviewCard: React.FC<ProductPreviewProps> = ({ formData }) => {
-    // Determine the price to show (use variation price if available, otherwise simple price)
-    const displayPrice = formData.price || 0;
-    
-    // Placeholder image
-    const placeholderImage = 'https://via.placeholder.com/300x300?text=Product+Image';
-    
-    // Placeholder for product status
-    const statusLabel = formData.action === 'submit_for_review' ? 'PENDING' : 'DRAFT';
+const ProductPreviewCard: React.FC<ProductPreviewCardProps> = ({ data }) => {
+  // Fallback values for display
+  const displayTitle = data.name.trim() || "Product Title";
+  const displayPrice = data.price > 0 ? data.price.toFixed(2) : "0.00";
+  const displayStock = data.stock > 0 ? data.stock : 0;
 
-    return (
-        <div className="w-full bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
-            <h3 className="text-lg font-bold p-4 bg-gray-50 border-b">Marketplace Preview</h3>
-            <div className="p-4">
-                <div className="relative">
-                    <img className="w-full h-auto object-cover rounded-md" 
-                        src={placeholderImage} 
-                        alt={formData.name || 'Product Image'} 
-                    />
-                    <span className={`absolute top-2 right-2 text-xs font-semibold px-2 py-1 rounded ${statusLabel === 'PENDING' ? 'bg-yellow-500 text-white' : 'bg-gray-300'}`}>
-                        {statusLabel}
-                    </span>
-                </div>
-                
-                <div className="mt-3">
-                    <h4 className="text-xl font-bold text-gray-900 truncate">
-                        {formData.name || '[Product Title]'}
-                    </h4>
-                    <p className="text-2xl font-extrabold text-green-600 mt-1">
-                        RM {displayPrice.toFixed(2)}
-                    </p>
-                    <p className="text-sm text-gray-500 mt-2">
-                        Stock: {formData.stock !== undefined ? formData.stock : '[N/A]'}
-                    </p>
-                    <button className="w-full mt-4 bg-green-500 text-white py-2 rounded hover:bg-green-600">
-                        Buy Now (Placeholder)
-                    </button>
-                </div>
-            </div>
+  return (
+    <div className="bg-white p-4 rounded shadow border border-gray-200">
+      <p className="text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider">
+        Live Mobile Preview
+      </p>
+
+      {/* Mobile Card Container */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white max-w-[280px] mx-auto lg:max-w-none">
+        
+        {/* Image Placeholder */}
+        <div className="h-40 bg-gray-100 flex flex-col items-center justify-center text-gray-300 relative">
+           {/* Simple Icon */}
+           <svg className="w-10 h-10 mb-1 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+           </svg>
+           <span className="text-[10px] uppercase font-semibold opacity-60">Cover Image</span>
+           
+           {/* Variable Badge */}
+           {data.is_variable && (
+             <span className="absolute top-2 right-2 bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm">
+               VARIANTS
+             </span>
+           )}
         </div>
-    );
+
+        {/* Card Content */}
+        <div className="p-3">
+           {/* Tags (Brand/Category) */}
+           <div className="flex flex-wrap gap-1 mb-2">
+             {data.category && (
+               <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded border border-blue-100 truncate max-w-[100px]">
+                 {data.category}
+               </span>
+             )}
+             {data.brand && (
+               <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded border border-gray-200 truncate max-w-[100px]">
+                 {data.brand}
+               </span>
+             )}
+           </div>
+
+           {/* Title */}
+           <h4 className="font-medium text-gray-900 text-sm leading-snug line-clamp-2 h-10 mb-1">
+             {displayTitle}
+           </h4>
+
+           {/* Price & Stock Row */}
+           <div className="flex justify-between items-end border-t border-gray-50 pt-2 mt-1">
+              <div>
+                <p className="text-[10px] text-gray-400 mb-0.5">Supplier Price</p>
+                <span className="text-blue-600 font-bold text-lg">RM {displayPrice}</span>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-gray-400 mb-0.5">Stock</p>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                  data.stock < 10 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                }`}>
+                  {displayStock}
+                </span>
+              </div>
+           </div>
+        </div>
+      </div>
+
+      <div className="mt-4 text-center">
+        <p className="text-xs text-gray-400 italic">
+          Preview updates automatically.
+        </p>
+      </div>
+    </div>
+  );
 };
 
 export default ProductPreviewCard;

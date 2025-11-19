@@ -6,7 +6,9 @@ import RegisterPage from './pages/RegisterPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import DashboardPage from './pages/DashboardPage';
 import CatalogPage from './pages/CatalogPage';
-// import CatalogPage from './pages/CatalogPage'; // Will be created next
+
+// 1. IMPORT THE NEW PAGE
+import SupplierProductFormPage from './pages/SupplierProductFormPage';
 
 function App() {
   return (
@@ -15,11 +17,14 @@ function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
       
-      {/* Protected Routes - These need Auth Middleware */}
+      {/* Protected Routes */}
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/catalog" element={<CatalogPage />}  />
 
-      {/* Default route: Redirect to Login as unauthorized users need to sign in */}
+      {/* 2. ADD THE ROUTE HERE */}
+      <Route path="/supplier/add-product" element={<SupplierProductFormPage />} />
+
+      {/* Default route */}
       <Route path="/" element={<LoginPage />} />
     </Routes>
   );
