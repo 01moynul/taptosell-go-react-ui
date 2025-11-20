@@ -30,7 +30,8 @@ const SupplierProductFormPage: React.FC = () => {
   pkg_width: 0,
   pkg_height: 0,
   variations: [],
-  variation_options: []
+  variation_options: [],
+  variationImages: {},
 });
 
   // --- Navigation Helpers ---

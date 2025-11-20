@@ -1,43 +1,37 @@
 // src/components/supplier/ProductForm.tsx
-import React, { useEffect } from 'react';
-import ImageUploader from './ImageUploader'; // <--- NEW IMPORT
-import VideoUploader from './VideoUploader'; // <--- NEW IMPORT
+import React from 'react';
+import ImageUploader from './ImageUploader';
+import VideoUploader from './VideoUploader';
+
+// FIXED: Split the Component import from the Type imports
+import VariationManager from './VariationManager';
+import type { VariationGroup, VariationOption } from './VariationManager';
 
 // --- Data Types ---
-export interface VariationGroup {
-  id: number;
-  name: string;
-  options: string[];
-}
-
-export interface VariationOption {
-  id: string;
-  option1: string; 
-  option2?: string;
-  price: number;
-  stock: number;
-  sku: string;
-}
-
 export interface ProductFormData {
   name: string;
   description: string;
-  // --- NEW MEDIA FIELDS ---
+  // Media
   images: string[]; 
   videoUrl: string;
-  // ------------------------
+  // Sales
   price: number;
   sku: string; 
+  stock: number;
+  // Categorization
   category: string;
   brand: string;
-  stock: number;
+  // Shipping
   weight: number;
-  is_variable: boolean;
-  variations: VariationGroup[];
-  variation_options: VariationOption[];
   pkg_length: number;
   pkg_width: number;
   pkg_height: number;
+  
+  // --- VARIATION FIELDS ---
+  is_variable: boolean;
+  variations: VariationGroup[];
+  variation_options: VariationOption[];
+  variationImages: Record<string, string>; // {"Red": "url..."}
 }
 
 interface ProductFormProps {
@@ -52,61 +46,6 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
   // Helper to update specific fields
   const updateField = (field: keyof ProductFormData, value: ProductFormData[keyof ProductFormData]) => {
     onChange({ ...data, [field]: value });
-  };
-
-  // Variation Logic
-  useEffect(() => {
-    if (!data.is_variable) return;
-    if (data.variations.length === 0) return;
-
-    const group1 = data.variations[0];
-    const group2 = data.variations[1];
-    let newOptions: VariationOption[] = [];
-
-    if (data.variations.length === 1 && group1.options.length > 0) {
-      newOptions = group1.options.map(opt => ({
-        id: opt,
-        option1: opt,
-        price: data.price,
-        stock: 0,
-        sku: data.sku ? `${data.sku}-${opt}` : '' // Auto-generate SKU suffix
-      }));
-    } else if (data.variations.length === 2 && group1.options.length > 0 && group2?.options.length > 0) {
-      group1.options.forEach(opt1 => {
-        group2.options.forEach(opt2 => {
-          newOptions.push({
-            id: `${opt1}-${opt2}`,
-            option1: opt1,
-            option2: opt2,
-            price: data.price,
-            stock: 0,
-            sku: data.sku ? `${data.sku}-${opt1}-${opt2}` : ''
-          });
-        });
-      });
-    }
-    
-    if (newOptions.length !== data.variation_options.length) {
-       updateField('variation_options', newOptions);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.variations, data.is_variable, data.sku]);
-
-  // Handlers
-  const addVariationGroup = () => {
-    if (data.variations.length < 2) {
-      const newGroups = [...data.variations, { id: Date.now(), name: 'Color', options: [] }];
-      updateField('variations', newGroups);
-    }
-  };
-
-  const addOptionToGroup = (groupIndex: number, option: string) => {
-    if (!option) return;
-    const newGroups = [...data.variations];
-    if (!newGroups[groupIndex].options.includes(option)) {
-      newGroups[groupIndex].options.push(option);
-      updateField('variations', newGroups);
-    }
   };
 
   return (
@@ -130,7 +69,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
       {activeTab === 'basic' && (
         <div className="space-y-6 animate-fade-in">
           
-          {/* --- NEW: MEDIA UPLOAD SECTION --- */}
+          {/* MEDIA UPLOAD SECTION */}
           <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-6">
             <h3 className="text-lg font-medium text-gray-900">Product Media</h3>
             
@@ -148,7 +87,6 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
               onChange={(newUrl) => updateField('videoUrl', newUrl)}
             />
           </div>
-          {/* --------------------------------- */}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
@@ -205,7 +143,6 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
               {data.is_variable && <p className="text-xs text-red-500 mt-1">Managed by Variations</p>}
             </div>
           </div>
-          {/* ADDED SKU FIELD HERE */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">SKU (Stock Keeping Unit)</label>
             <input 
@@ -219,55 +156,29 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
         </div>
       )}
 
-      {/* TAB 3: VARIATIONS */}
+      {/* TAB 3: VARIATIONS (UPDATED) */}
       {activeTab === 'variations' && (
         <div className="space-y-6 animate-fade-in">
            <div className="flex items-center justify-between bg-gray-50 p-3 rounded border">
               <span className="font-medium text-gray-700">Enable Variations?</span>
               <button onClick={() => updateField('is_variable', !data.is_variable)} className={`px-3 py-1 rounded text-sm font-bold ${data.is_variable ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>{data.is_variable ? 'YES' : 'NO'}</button>
            </div>
+
            {data.is_variable && (
-             <div>
-                {data.variations.map((group, idx) => (
-                  <div key={group.id} className="mb-4 p-4 border rounded bg-white shadow-sm">
-                     <div className="flex justify-between mb-2">
-                        <label className="font-medium text-sm">Variation {idx + 1} Name</label>
-                        <select className="text-sm border rounded p-1" value={group.name} onChange={(e) => { const newGroups = [...data.variations]; newGroups[idx].name = e.target.value; updateField('variations', newGroups); }}>
-                          <option>Color</option><option>Size</option><option>Material</option>
-                        </select>
-                     </div>
-                     <div className="flex gap-2 flex-wrap mb-2">
-                        {group.options.map(opt => (
-                          <span key={opt} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold flex items-center gap-1">{opt}<button onClick={() => { const newGroups = [...data.variations]; newGroups[idx].options = newGroups[idx].options.filter(o => o !== opt); updateField('variations', newGroups); }} className="hover:text-red-600">×</button></span>
-                        ))}
-                     </div>
-                     <div className="flex gap-2">
-                        <input type="text" placeholder="Add option (e.g. Red)..." className="border rounded p-1 text-sm flex-1" onKeyDown={(e) => { if(e.key === 'Enter') { addOptionToGroup(idx, (e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; }}} />
-                     </div>
-                  </div>
-                ))}
-                {data.variations.length < 2 && <button onClick={addVariationGroup} className="text-sm text-blue-600 hover:underline">+ Add Another Variation Layer</button>}
-                {/* TABLE */}
-                {data.variation_options.length > 0 && (
-                  <div className="mt-6 overflow-x-auto">
-                    <table className="w-full text-sm text-left border-collapse">
-                      <thead className="bg-gray-100 text-gray-600">
-                        <tr><th className="p-2 border">Variation</th><th className="p-2 border">Price</th><th className="p-2 border">Stock</th><th className="p-2 border">SKU</th></tr>
-                      </thead>
-                      <tbody>
-                        {data.variation_options.map((row, idx) => (
-                          <tr key={row.id} className="border-b hover:bg-gray-50">
-                            <td className="p-2 font-medium">{row.option1} {row.option2 ? ` / ${row.option2}` : ''}</td>
-                            <td className="p-2"><input type="number" className="w-20 border rounded p-1" value={row.price} onChange={(e) => { const newRows = [...data.variation_options]; newRows[idx].price = parseFloat(e.target.value); updateField('variation_options', newRows); }} /></td>
-                            <td className="p-2"><input type="number" className="w-20 border rounded p-1" value={row.stock} onChange={(e) => { const newRows = [...data.variation_options]; newRows[idx].stock = parseInt(e.target.value); updateField('variation_options', newRows); }} /></td>
-                            <td className="p-2"><input type="text" className="w-24 border rounded p-1" value={row.sku} onChange={(e) => { const newRows = [...data.variation_options]; newRows[idx].sku = e.target.value; updateField('variation_options', newRows); }} /></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-             </div>
+             <VariationManager 
+               groups={data.variations}
+               options={data.variation_options}
+               variationImages={data.variationImages || {}}
+               onChange={(groups, options, images) => {
+                 // Batch update all 3 fields to prevent sync issues
+                 onChange({ 
+                   ...data, 
+                   variations: groups, 
+                   variation_options: options,
+                   variationImages: images 
+                 });
+               }}
+             />
            )}
         </div>
       )}
