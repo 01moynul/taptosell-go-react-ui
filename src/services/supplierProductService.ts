@@ -1,15 +1,15 @@
 // src/services/supplierProductService.ts
 import apiClient from './api';
 
-// --- Types based on Go API Blueprint ---
+// --- Types ---
 
-// 1. Base Product CORE: Data fields required for creation/update (no 'id')
+// 1. Base Product CORE
 interface BaseProductCore {
     name: string;
     description: string;
-    price: number; // Supplier's base price
+    price: number;
     stock: number;
-    // Standard fields identified in the blueprint audit:
+    images?: string[];
     video_url?: string;
     weight: number;
     pkg_length: number;
@@ -17,7 +17,7 @@ interface BaseProductCore {
     pkg_height: number;
 }
 
-// 2. Base Product: Data fields including the required 'id' (used for fetching/editing existing products)
+// 2. Base Product
 interface BaseProduct extends BaseProductCore {
     id: number;
 }
@@ -25,69 +25,79 @@ interface BaseProduct extends BaseProductCore {
 // Supplier-specific details
 export interface SupplierProduct extends BaseProduct {
     status: 'draft' | 'pending' | 'published' | 'rejected';
-    reason?: string; // Rejection reason if status is 'rejected'
+    reason?: string;
     is_variable: boolean;
     created_at: string;
-    // IDs required for forms:
     category_id: number;
     brand_id: number;
-    // For variable products, the variations data will be in a specific format
     variations?: unknown;
 }
 
-// 3. Product Payload: Extends the CORE data structure, which correctly excludes 'id'
+// [NEW] Interface for Private Inventory Items
+export interface InventoryItem {
+    id: number;
+    name: string;
+    sku: string;
+    stock: number;
+    price: number;
+    description?: string;
+    created_at?: string;
+}
+
+// 3. Product Payload
 export interface ProductPayload extends BaseProductCore {
     category_id: number;
-    brand_name: string; // We send the name, backend creates the ID if new
+    brand_name: string;
     is_variable: boolean;
     variations?: unknown;
-    action: 'save_draft' | 'submit_for_review'; // Action determines initial status
+    action: 'save_draft' | 'submit_for_review';
 }
 
+// --- API Functions ---
 
 /**
- * @description Calls the GET /v1/products/supplier/me endpoint to retrieve all products.
- * @param {string} [status] - Optional filter by status.
- * @returns {Promise<SupplierProduct[]>} - A list of the Supplier's products.
+ * @description Calls GET /v1/products/supplier/me
+ * [FIX] Extracts the 'products' array from the JSON response.
  */
 export const fetchMyProducts = async (statusFilter?: string): Promise<SupplierProduct[]> => {
-    // GET /v1/products/supplier/me
     const params = statusFilter ? { status: statusFilter } : {};
-    const response = await apiClient.get<SupplierProduct[]>('/products/supplier/me', { params });
-    return response.data;
+    // We define the response shape here: { products: SupplierProduct[] }
+    const response = await apiClient.get<{ products: SupplierProduct[] }>('/products/supplier/me', { params });
+    // [CRITICAL FIX] Return the array inside the object
+    return response.data.products || []; 
 };
 
-
 /**
- * @description Calls the POST /v1/products endpoint to create a new product.
- * @param {ProductPayload} payload - The product data.
- * @returns {Promise<{product_id: number}>} - The ID of the newly created product.
+ * @description Calls POST /v1/products
  */
 export const createProduct = async (payload: ProductPayload): Promise<{product_id: number}> => {
-    // POST /v1/products
     const response = await apiClient.post<{product_id: number}>('/products', payload);
     return response.data;
 };
 
-
 /**
- * @description Calls the PUT /v1/products/:id endpoint to update an existing product.
- * @param {number} productId - The ID of the product to update.
- * @param {ProductPayload} payload - The product data.
- * @returns {Promise<void>}
+ * @description Calls PUT /v1/products/:id
  */
 export const updateProduct = async (productId: number, payload: ProductPayload): Promise<void> => {
-    // PUT /v1/products/:id
     await apiClient.put(`/products/${productId}`, payload);
 };
 
-
 /**
- * @description Calls the DELETE /v1/products/:id endpoint to delete a product.
- * @param {number} productId - The ID of the product to delete.
- * @returns {Promise<void>}
+ * @description Calls DELETE /v1/products/:id
  */
 export const deleteProduct = async (productId: number): Promise<void> => {
-    // DELETE /v1/products/:id
     await apiClient.delete(`/products/${productId}`);
+};
+
+// [NEW] Fetch Private Inventory
+export const fetchPrivateInventory = async (): Promise<InventoryItem[]> => {
+    // GET /v1/supplier/inventory
+    const response = await apiClient.get<{ items: InventoryItem[] }>('/supplier/inventory');
+    // [CRITICAL FIX] Return the array inside the object
+    return response.data.items || [];
+};
+
+// [NEW] Delete Private Inventory Item
+export const deleteInventoryItem = async (id: number): Promise<void> => {
+    await apiClient.delete(`/supplier/inventory/${id}`);
 };
