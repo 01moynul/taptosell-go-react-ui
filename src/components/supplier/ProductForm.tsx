@@ -32,6 +32,8 @@ export interface ProductFormData {
   variations: VariationGroup[];
   variation_options: VariationOption[];
   variationImages: Record<string, string>; // {"Red": "url..."}
+
+  sizeChart?: { type: 'template' | 'image'; url?: string; templateId?: string } | null;
 }
 
 interface ProductFormProps {
@@ -169,8 +171,11 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
                groups={data.variations}
                options={data.variation_options}
                variationImages={data.variationImages || {}}
+               // NEW PROPS
+               sizeChart={data.sizeChart || null}
+               onSizeChartChange={(sc) => updateField('sizeChart', sc)}
+               
                onChange={(groups, options, images) => {
-                 // Batch update all 3 fields to prevent sync issues
                  onChange({ 
                    ...data, 
                    variations: groups, 

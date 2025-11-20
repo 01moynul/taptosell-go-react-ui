@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'; // Removed useRef
+import React, { useState, useEffect } from 'react';
 import { uploadService } from '../../services/uploadService';
 
-// ... (Types remain the same) ...
+// --- Types ---
 export interface VariationGroup {
   id: string;
   name: string;
@@ -17,20 +17,42 @@ export interface VariationOption {
   sku: string;
 }
 
+// NEW: Size Chart Type Definition
+export interface SizeChartData {
+  type: 'template' | 'image';
+  url?: string;
+  templateId?: string;
+}
+
 interface VariationManagerProps {
   groups: VariationGroup[];
   options: VariationOption[];
   variationImages: Record<string, string>; 
+  // NEW PROPS
+  sizeChart: SizeChartData | null;
+  onSizeChartChange: (data: SizeChartData | null) => void;
+  
   onChange: (groups: VariationGroup[], options: VariationOption[], images: Record<string, string>) => void;
 }
 
-const VariationManager: React.FC<VariationManagerProps> = ({ groups, options, variationImages, onChange }) => {
+const VariationManager: React.FC<VariationManagerProps> = ({ 
+  groups, 
+  options, 
+  variationImages, 
+  sizeChart, 
+  onSizeChartChange, 
+  onChange 
+}) => {
   
   const [bulkPrice, setBulkPrice] = useState('');
   const [bulkStock, setBulkStock] = useState('');
   const [bulkSku, setBulkSku] = useState('');
   const [newOptionInputs, setNewOptionInputs] = useState<string[]>(['', '']); 
 
+  // Logic to detect if we need a Size Chart
+  const hasSizeVariation = groups.some(g => g.name.toLowerCase() === 'size');
+
+  // --- Matrix Generation ---
   useEffect(() => {
     if (groups.length === 0) return;
 
@@ -69,6 +91,7 @@ const VariationManager: React.FC<VariationManagerProps> = ({ groups, options, va
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups]); 
 
+  // --- Handlers ---
   const handleAddGroup = () => {
     if (groups.length < 2) {
       const newGroups = [...groups, { id: Date.now().toString(), name: groups.length === 0 ? 'Color' : 'Size', options: [] }];
@@ -109,7 +132,6 @@ const VariationManager: React.FC<VariationManagerProps> = ({ groups, options, va
     const newGroups = [...groups];
     newGroups[groupIndex].options = newGroups[groupIndex].options.filter(o => o !== optionName);
     
-    // FIXED: Use const (cleaner)
     const newImages = { ...variationImages };
     if (groupIndex === 0) {
         delete newImages[optionName];
@@ -140,7 +162,6 @@ const VariationManager: React.FC<VariationManagerProps> = ({ groups, options, va
       const newImages = { ...variationImages, [optionName]: url };
       onChange(groups, options, newImages);
     } catch (err) {
-      // FIXED: Log the error to satisfy linter
       console.error("Variation image upload error:", err);
       alert("Failed to upload image");
     }
@@ -173,7 +194,6 @@ const VariationManager: React.FC<VariationManagerProps> = ({ groups, options, va
             <div className="flex flex-wrap gap-2 mb-3">
               {g.options.map(opt => (
                 <div key={opt} className="flex items-center bg-blue-50 border border-blue-100 px-3 py-1 rounded-full">
-                   {/* Image Preview (Only for Group 1) */}
                    {idx === 0 && variationImages[opt] && (
                      <img src={variationImages[opt]} alt="" className="w-6 h-6 rounded-full object-cover mr-2 border" />
                    )}
@@ -305,6 +325,78 @@ const VariationManager: React.FC<VariationManagerProps> = ({ groups, options, va
                     })}
                 </tbody>
             </table>
+        </div>
+      )}
+
+      {/* 4. Size Chart Section (NEW) */}
+      {hasSizeVariation && (
+        <div className="bg-white p-4 rounded border border-gray-200 shadow-sm space-y-4">
+            <h4 className="font-semibold text-gray-700 flex items-center gap-2">
+                Size Chart <span className="text-red-500 text-xs">*Required for Size variations</span>
+            </h4>
+            
+            <div className="flex gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                        type="radio" 
+                        name="sc_type" 
+                        checked={!sizeChart || sizeChart.type === 'template'} 
+                        onChange={() => onSizeChartChange({ type: 'template' })}
+                    />
+                    <span>Use Template</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                        type="radio" 
+                        name="sc_type" 
+                        checked={sizeChart?.type === 'image'} 
+                        onChange={() => onSizeChartChange({ type: 'image', url: '' })}
+                    />
+                    <span>Upload Image</span>
+                </label>
+            </div>
+
+            {/* Content based on selection */}
+            {(!sizeChart || sizeChart.type === 'template') ? (
+                <select className="w-full border p-2 rounded text-sm bg-gray-50">
+                    <option>Standard T-Shirt Size Chart</option>
+                    <option>Jeans Size Chart</option>
+                    <option>Shoes Size Chart</option>
+                </select>
+            ) : (
+                <div className="border-2 border-dashed border-gray-300 rounded p-4 flex flex-col items-center justify-center gap-2">
+                    {sizeChart.url ? (
+                        <div className="relative group">
+                            <img src={sizeChart.url} alt="Size Chart" className="max-h-64 rounded border" />
+                            <button 
+                                onClick={() => onSizeChartChange({ ...sizeChart, url: '' })}
+                                className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="text-center">
+                            <p className="text-sm text-gray-500 mb-2">Upload a size guide image</p>
+                            <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={async (e) => {
+                                    if (e.target.files?.[0]) {
+                                        try {
+                                            const url = await uploadService.uploadFile(e.target.files[0]);
+                                            onSizeChartChange({ type: 'image', url });
+                                        } catch (err) {
+                                            console.error("Size chart upload error:", err);
+                                            alert("Upload failed");
+                                        }
+                                    }
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
       )}
     </div>
