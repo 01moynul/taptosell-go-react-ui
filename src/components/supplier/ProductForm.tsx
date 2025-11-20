@@ -1,5 +1,7 @@
 // src/components/supplier/ProductForm.tsx
 import React, { useEffect } from 'react';
+import ImageUploader from './ImageUploader'; // <--- NEW IMPORT
+import VideoUploader from './VideoUploader'; // <--- NEW IMPORT
 
 // --- Data Types ---
 export interface VariationGroup {
@@ -20,8 +22,12 @@ export interface VariationOption {
 export interface ProductFormData {
   name: string;
   description: string;
+  // --- NEW MEDIA FIELDS ---
+  images: string[]; 
+  videoUrl: string;
+  // ------------------------
   price: number;
-  sku: string; // <--- ADDED THIS
+  sku: string; 
   category: string;
   brand: string;
   stock: number;
@@ -84,7 +90,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
        updateField('variation_options', newOptions);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.variations, data.is_variable, data.sku]); // Added SKU to dependencies
+  }, [data.variations, data.is_variable, data.sku]);
 
   // Handlers
   const addVariationGroup = () => {
@@ -122,7 +128,28 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
 
       {/* TAB 1: BASIC INFO */}
       {activeTab === 'basic' && (
-        <div className="space-y-4 animate-fade-in">
+        <div className="space-y-6 animate-fade-in">
+          
+          {/* --- NEW: MEDIA UPLOAD SECTION --- */}
+          <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-6">
+            <h3 className="text-lg font-medium text-gray-900">Product Media</h3>
+            
+            {/* Images */}
+            <ImageUploader 
+              images={data.images || []} 
+              onChange={(newImages) => updateField('images', newImages)} 
+            />
+
+            <hr className="border-gray-100" />
+
+            {/* Video */}
+            <VideoUploader 
+              videoUrl={data.videoUrl || ''}
+              onChange={(newUrl) => updateField('videoUrl', newUrl)}
+            />
+          </div>
+          {/* --------------------------------- */}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
             <input
@@ -151,7 +178,6 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
                  onChange={(e) => updateField('category', e.target.value)}
               >
                 <option value="">Select...</option>
-                {/* FIX: Use ID numbers (1, 2, 3) so backend accepts them */}
                 <option value="1">Electronics</option>
                 <option value="2">Fashion</option>
                 <option value="3">Home & Living</option>
@@ -165,7 +191,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
         </div>
       )}
 
-      {/* TAB 2: SALES & PRICING (Added SKU) */}
+      {/* TAB 2: SALES & PRICING */}
       {activeTab === 'sales' && (
         <div className="space-y-4 animate-fade-in">
           <div className="grid grid-cols-2 gap-4">

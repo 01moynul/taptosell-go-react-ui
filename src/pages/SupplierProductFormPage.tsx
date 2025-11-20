@@ -15,6 +15,8 @@ const SupplierProductFormPage: React.FC = () => {
 
   // --- Central State (The Source of Truth) ---
   const [formData, setFormData] = useState<ProductFormData>({
+  images: [],
+  videoUrl: '',
   name: '',
   description: '',
   price: 0,
