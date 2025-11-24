@@ -1,9 +1,13 @@
 // src/services/api.ts
 import axios from 'axios';
 
+// 1. Get the domain from .env (http://localhost:8080)
+const ENV_URL = import.meta.env.VITE_API_URL;
+
+
 // The base URL of our Go API backend
 // We'll run the Go API on port 8080
-const API_BASE_URL = 'http://localhost:8080/v1';
+const API_BASE_URL = `${ENV_URL}/v1`;
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
