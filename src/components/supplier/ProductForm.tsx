@@ -1,7 +1,8 @@
 // src/components/supplier/ProductForm.tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react'; // Added useEffect/useState
 import ImageUploader from './ImageUploader';
 import VideoUploader from './VideoUploader';
+import apiClient from '../../services/api'; // [NEW] Import API to fetch categories
 
 // FIXED: Split the Component import from the Type imports
 import VariationManager from './VariationManager';
@@ -11,28 +12,21 @@ import type { VariationGroup, VariationOption } from './VariationManager';
 export interface ProductFormData {
   name: string;
   description: string;
-  // Media
   images: string[]; 
   videoUrl: string;
-  // Sales
   price: number;
   sku: string; 
   stock: number;
-  // Categorization
   category: string;
   brand: string;
-  // Shipping
   weight: number;
   pkg_length: number;
   pkg_width: number;
   pkg_height: number;
-  
-  // --- VARIATION FIELDS ---
   is_variable: boolean;
   variations: VariationGroup[];
   variation_options: VariationOption[];
-  variationImages: Record<string, string>; // {"Red": "url..."}
-
+  variationImages: Record<string, string>; 
   sizeChart?: { type: 'template' | 'image'; url?: string; templateId?: string } | null;
 }
 
@@ -43,7 +37,28 @@ interface ProductFormProps {
   onTabChange: (tab: 'basic' | 'sales' | 'variations' | 'shipping') => void;
 }
 
+interface CategoryOption {
+    id: number;
+    name: string;
+}
+
 const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, onTabChange }) => {
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+
+  // [NEW] Fetch Real Categories on Mount
+  useEffect(() => {
+    const loadCategories = async () => {
+        try {
+            const res = await apiClient.get<{categories: CategoryOption[]}>('/categories');
+            if (res.data.categories) {
+                setCategories(res.data.categories);
+            }
+        } catch (err) {
+            console.error("Failed to load categories", err);
+        }
+    };
+    loadCategories();
+  }, []);
 
   // Helper to update specific fields
   const updateField = (field: keyof ProductFormData, value: ProductFormData[keyof ProductFormData]) => {
@@ -71,19 +86,13 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
       {activeTab === 'basic' && (
         <div className="space-y-6 animate-fade-in">
           
-          {/* MEDIA UPLOAD SECTION */}
           <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-6">
             <h3 className="text-lg font-medium text-gray-900">Product Media</h3>
-            
-            {/* Images */}
             <ImageUploader 
               images={data.images || []} 
               onChange={(newImages) => updateField('images', newImages)} 
             />
-
             <hr className="border-gray-100" />
-
-            {/* Video */}
             <VideoUploader 
               videoUrl={data.videoUrl || ''}
               onChange={(newUrl) => updateField('videoUrl', newUrl)}
@@ -112,15 +121,16 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              {/* [FIXED] Dynamic Select Options */}
               <select 
                  className="w-full p-2 border rounded"
-                 value={data.category}
+                 value={data.category} // This ID (e.g. "4") must match the API ID
                  onChange={(e) => updateField('category', e.target.value)}
               >
                 <option value="">Select...</option>
-                <option value="1">Electronics</option>
-                <option value="2">Fashion</option>
-                <option value="3">Home & Living</option>
+                {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -158,7 +168,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
         </div>
       )}
 
-      {/* TAB 3: VARIATIONS (UPDATED) */}
+      {/* TAB 3: VARIATIONS */}
       {activeTab === 'variations' && (
         <div className="space-y-6 animate-fade-in">
            <div className="flex items-center justify-between bg-gray-50 p-3 rounded border">
@@ -171,8 +181,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ data, onChange, activeTab, on
                groups={data.variations}
                options={data.variation_options}
                variationImages={data.variationImages || {}}
-               // NEW PROPS
-               sizeChart={data.sizeChart || null}
+               sizeChart={data.sizeChart || null} // Pass it down
                onSizeChartChange={(sc) => updateField('sizeChart', sc)}
                
                onChange={(groups, options, images) => {

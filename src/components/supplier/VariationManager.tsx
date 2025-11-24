@@ -52,7 +52,7 @@ const VariationManager: React.FC<VariationManagerProps> = ({
   // Logic to detect if we need a Size Chart
   const hasSizeVariation = groups.some(g => g.name.toLowerCase() === 'size');
 
-  // --- Matrix Generation ---
+  // --- Matrix Generation (Fixed to match by Value, not ID) ---
   useEffect(() => {
     if (groups.length === 0) return;
 
@@ -67,16 +67,21 @@ const VariationManager: React.FC<VariationManagerProps> = ({
     let newOptions: VariationOption[] = [];
 
     if (!group2) {
+      // 1-Dimensional Case (Color only)
       newOptions = group1.options.map(opt1 => {
+        // [FIX] Match by Option Value, ignore ID
         const existing = options.find(o => o.option1 === opt1 && !o.option2);
         return existing || { id: opt1, option1: opt1, price: 0, stock: 0, sku: '' };
       });
     } 
     else if (group2 && group2.options.length > 0) {
+      // 2-Dimensional Case (Color + Size)
       group1.options.forEach(opt1 => {
         group2.options.forEach(opt2 => {
           const id = `${opt1}-${opt2}`;
-          const existing = options.find(o => o.id === id);
+          // [FIX] Match by Option Values (Color AND Size), ignore ID
+          const existing = options.find(o => o.option1 === opt1 && o.option2 === opt2);
+          
           newOptions.push(existing || { id, option1: opt1, option2: opt2, price: 0, stock: 0, sku: '' });
         });
       });
@@ -85,11 +90,12 @@ const VariationManager: React.FC<VariationManagerProps> = ({
         newOptions = [];
     }
 
+    // Only update if the structure actually changed to prevent infinite loops
     if (JSON.stringify(newOptions) !== JSON.stringify(options)) {
       onChange(groups, newOptions, variationImages);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups]); 
+  }, [groups]);
 
   // --- Handlers ---
   const handleAddGroup = () => {
