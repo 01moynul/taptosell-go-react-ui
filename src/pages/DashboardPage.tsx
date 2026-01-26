@@ -17,6 +17,7 @@ import GlobalTaxonomyManager from '../components/manager/GlobalTaxonomyManager';
 import UserManagementPage from '../components/manager/UserManagementPage';
 import { AIChatWindow } from '../components/shared/AIChatWindow'; 
 
+import ManagerDashboardStats from '../components/manager/ManagerDashboardStats';
 // --- FIX FOR ERROR 1: Explicit 'type' imports ---
 import { fetchDropshipperStats, type DropshipperStats } from '../services/dashboardService';
 import { fetchMyOrders, type DropshipperOrder } from '../services/orderService';
@@ -133,7 +134,7 @@ function DashboardPage() {
         );
     };
 
-    const renderManagerContent = () => {
+const renderManagerContent = () => {
         const navItems = [
             { id: 'products', label: 'Product Approval', Component: ProductApprovalQueue },
             { id: 'withdrawals', label: 'Withdrawals', Component: WithdrawalRequestQueue },
@@ -148,6 +149,10 @@ function DashboardPage() {
 
         return (
             <div className="manager-dashboard">
+                {/* [NEW] The Stats Row (Always Visible) */}
+                <ManagerDashboardStats />
+
+                {/* Existing Navigation Tabs */}
                 <nav className="flex flex-wrap gap-2 border-b mb-6 pb-2">
                     {navItems.map((item) => (
                         <Link 

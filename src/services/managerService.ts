@@ -1,40 +1,54 @@
 // src/services/managerService.ts
 
 import api from './api';
-import type { PendingProduct, RejectProductPayload , WithdrawalRequest ,
-                ProcessWithdrawalPayload, PriceAppeal, ProcessPriceAppealPayload ,
-                GetSettingsResponse , UpdateSettingsPayload, User,
-                GetUsersResponse, UpdatePenaltyPayload } from '../types/CoreTypes';
+import type { 
+    PendingProduct, RejectProductPayload, 
+    WithdrawalRequest, ProcessWithdrawalPayload, 
+    PriceAppeal, ProcessPriceAppealPayload, 
+    GetSettingsResponse, UpdateSettingsPayload, 
+    User, GetUsersResponse, UpdatePenaltyPayload 
+} from '../types/CoreTypes';
 
-
-// API endpoints used by the Manager dashboard
+// [FIX 1] Centralized Endpoints object with NO '/v1' prefix
+// Your api.ts likely has baseURL set to 'http://localhost:8080/v1', so we don't repeat it here.
 const ManagerEndpoints = {
-    PendingProducts: '/v1/manager/products/pending',
-    ApproveProduct: (id: number) => `/v1/manager/products/${id}/approve`,
-    RejectProduct: (id: number) => `/v1/manager/products/${id}/reject`,
+    // Products
+    PendingProducts: '/manager/products/pending',
+    ApproveProduct: (id: number) => `/manager/products/${id}/approve`,
+    RejectProduct: (id: number) => `/manager/products/${id}/reject`,
+    
+    // Withdrawals
+    WithdrawalRequests: '/manager/withdrawal-requests',
+    ProcessWithdrawal: (id: number) => `/manager/withdrawal-requests/${id}`,
+
+    // Price Appeals
+    PriceAppeals: '/manager/price-requests',
+    ProcessPriceAppeal: (id: number) => `/manager/price-requests/${id}`,
+
+    // Users
+    Users: '/manager/users',
+    UpdatePenalty: (id: number) => `/manager/users/${id}/penalty`,
+
+    // Settings
+    Settings: '/manager/settings',
 };
 
 /**
- * Fetches all products currently awaiting manager approval (status: pending).
- * @returns A promise that resolves to an array of PendingProduct objects.
+ * --- PRODUCTS ---
  */
 export const getPendingProducts = async (): Promise<PendingProduct[]> => {
     try {
         const response = await api.get<{ products: PendingProduct[] }>(
             ManagerEndpoints.PendingProducts
         );
-        return response.data.products;
+        // [FIX 2] Safety check: Return empty array if null to prevent "length of null" crash
+        return response.data.products || []; 
     } catch (error) {
         console.error('Error fetching pending products:', error);
-        throw error; // Re-throw the error for component handling
+        throw error;
     }
 };
 
-/**
- * Approves a pending product, setting its status to 'published'.
- * @param id The ID of the product to approve.
- * @returns A promise that resolves to a success message.
- */
 export const approveProduct = async (id: number): Promise<string> => {
     try {
         const response = await api.patch<{ message: string }>(
@@ -47,16 +61,7 @@ export const approveProduct = async (id: number): Promise<string> => {
     }
 };
 
-/**
- * Rejects a pending product, setting its status to 'rejected'.
- * @param id The ID of the product to reject.
- * @param payload The reason for rejection.
- * @returns A promise that resolves to a success message.
- */
-export const rejectProduct = async (
-    id: number,
-    payload: RejectProductPayload
-): Promise<string> => {
+export const rejectProduct = async (id: number, payload: RejectProductPayload): Promise<string> => {
     try {
         const response = await api.patch<{ message: string }>(
             ManagerEndpoints.RejectProduct(id),
@@ -70,106 +75,68 @@ export const rejectProduct = async (
 };
 
 /**
- * Fetches all pending supplier withdrawal requests for manager review.
- * Corresponds to GET /v1/manager/withdrawal-requests
- * @returns A promise that resolves to an array of WithdrawalRequest objects.
+ * --- WITHDRAWALS ---
  */
 export const getWithdrawalRequests = async (): Promise<WithdrawalRequest[]> => {
     try {
         const response = await api.get<{ requests: WithdrawalRequest[] }>(
-            '/v1/manager/withdrawal-requests'
+            ManagerEndpoints.WithdrawalRequests
         );
-        return response.data.requests;
+        return response.data.requests || []; 
     } catch (err) {
         console.error('Error fetching withdrawal requests:', err);
         throw err;
     }
 };
 
-/**
- * Approves or rejects a supplier's withdrawal request.
- * Corresponds to PATCH /v1/manager/withdrawal-requests/:id
- * If rejected, refunds the money to the supplier's wallet.
- * @param id The ID of the withdrawal request to process.
- * @param payload The action ('approve' or 'reject') and optional reason.
- * @returns A promise that resolves to a success message.
- */
-export const processWithdrawalRequest = async (
-    id: number,
-    payload: ProcessWithdrawalPayload
-): Promise<string> => {
+export const processWithdrawalRequest = async (id: number, payload: ProcessWithdrawalPayload): Promise<string> => {
     try {
         const response = await api.patch<{ message: string }>(
-            `/v1/manager/withdrawal-requests/${id}`,
+            ManagerEndpoints.ProcessWithdrawal(id),
             payload
         );
         return response.data.message;
     } catch (err) {
-        // Log the full error to help debug failed wallet operations
         console.error(`Error processing withdrawal request ID ${id}:`, err);
         throw err;
     }
 };
 
-// src/services/managerService.ts (New Functions)
-
-// ... existing functions (getPendingProducts, approveProduct, rejectProduct, getWithdrawalRequests, processWithdrawalRequest)
-
 /**
- * Fetches all pending supplier price appeals for manager review.
- * Corresponds to GET /v1/manager/price-requests
- * @returns A promise that resolves to an array of PriceAppeal objects.
+ * --- PRICE APPEALS ---
  */
 export const getPriceAppeals = async (): Promise<PriceAppeal[]> => {
     try {
         const response = await api.get<{ appeals: PriceAppeal[] }>(
-            '/v1/manager/price-requests'
+            ManagerEndpoints.PriceAppeals
         );
-        return response.data.appeals;
+        return response.data.appeals || [];
     } catch (err) {
         console.error('Error fetching price appeals:', err);
         throw err;
     }
 };
 
-/**
- * Approves or rejects a supplier's price appeal.
- * Corresponds to PATCH /v1/manager/price-requests/:id
- * If approved, it updates the price on the products table.
- * @param id The ID of the price appeal to process.
- * @param payload The action ('approve' or 'reject') and optional reason.
- * @returns A promise that resolves to a success message.
- */
-export const processPriceAppeal = async (
-    id: number,
-    payload: ProcessPriceAppealPayload
-): Promise<string> => {
+export const processPriceAppeal = async (id: number, payload: ProcessPriceAppealPayload): Promise<string> => {
     try {
         const response = await api.patch<{ message: string }>(
-            `/v1/manager/price-requests/${id}`,
+            ManagerEndpoints.ProcessPriceAppeal(id),
             payload
         );
         return response.data.message;
     } catch (err) {
-        // Log the full error to help debug failed price updates
         console.error(`Error processing price appeal ID ${id}:`, err);
         throw err;
     }
 };
 
-// src/services/managerService.ts (New Functions)
-
-// ... existing functions (getPendingProducts, approveProduct, rejectProduct, etc.)
-
 /**
- * Fetches all key/value pairs from the platform settings table.
- * Corresponds to GET /v1/manager/settings
- * @returns A promise that resolves to the settings object map.
+ * --- SETTINGS ---
  */
 export const getGlobalSettings = async (): Promise<GetSettingsResponse> => {
     try {
         const response = await api.get<GetSettingsResponse>(
-            '/v1/manager/settings'
+            ManagerEndpoints.Settings
         );
         return response.data;
     } catch (err) {
@@ -178,18 +145,10 @@ export const getGlobalSettings = async (): Promise<GetSettingsResponse> => {
     }
 };
 
-/**
- * Updates one or more values in the platform settings table.
- * Corresponds to PATCH /v1/manager/settings
- * @param payload The settings fields to update.
- * @returns A promise that resolves to a success message.
- */
-export const updateGlobalSettings = async (
-    payload: UpdateSettingsPayload
-): Promise<string> => {
+export const updateGlobalSettings = async (payload: UpdateSettingsPayload): Promise<string> => {
     try {
         const response = await api.patch<{ message: string }>(
-            '/v1/manager/settings',
+            ManagerEndpoints.Settings,
             payload
         );
         return response.data.message;
@@ -199,38 +158,25 @@ export const updateGlobalSettings = async (
     }
 };
 
-// src/services/managerService.ts (User Management Functions)
-
 /**
- * Fetches a list of all users (Dropshippers, Suppliers, etc.) for the Manager.
- * Corresponds to GET /v1/manager/users
- * @returns A promise that resolves to an array of User objects.
+ * --- USERS ---
  */
 export const getUsers = async (): Promise<User[]> => {
     try {
-        // API returns { users: [...] }
-        const response = await api.get<GetUsersResponse>('/v1/manager/users');
-        return response.data.users;
+        const response = await api.get<GetUsersResponse>(
+            ManagerEndpoints.Users
+        );
+        return response.data.users || []; 
     } catch (err) {
         console.error('Error fetching users:', err);
         throw err;
     }
 };
 
-/**
- * Manually updates a user's penalty strike count.
- * Corresponds to PATCH /v1/manager/users/:id/penalty
- * @param id The ID of the user to update.
- * @param payload The action ('increment', 'decrement', 'reset') and optional reason.
- * @returns A promise that resolves to a success message.
- */
-export const updateUserPenalty = async (
-    id: number,
-    payload: UpdatePenaltyPayload
-): Promise<string> => {
+export const updateUserPenalty = async (id: number, payload: UpdatePenaltyPayload): Promise<string> => {
     try {
         const response = await api.patch<{ message: string }>(
-            `/v1/manager/users/${id}/penalty`,
+            ManagerEndpoints.UpdatePenalty(id),
             payload
         );
         return response.data.message;
