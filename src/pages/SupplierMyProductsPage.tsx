@@ -1,16 +1,17 @@
 // src/pages/SupplierMyProductsPage.tsx
+
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   fetchMyProducts, 
   fetchPrivateInventory, 
   deleteProduct, 
   deleteInventoryItem,
+  promoteInventoryItem, // [CRITICAL] Import for the button
   type SupplierProduct, 
   type InventoryItem 
 } from '../services/supplierProductService';
-import { Link } from 'react-router-dom';
-// REMOVED: import axios from 'axios'; (Fixes the linting error)
 
 // Filter options for Marketplace products
 const PRODUCT_STATUSES = [
@@ -24,9 +25,23 @@ const PRODUCT_STATUSES = [
 function SupplierMyProductsPage() {
   const auth = useAuth();
   const isSupplier = auth.user?.role === 'supplier';
+  
+  // Navigation Hooks
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  // State for Tabs
-  const [activeTab, setActiveTab] = useState<'marketplace' | 'private'>('marketplace');
+  // 1. Tab State with URL Persistence
+  // If URL is /supplier/products?view=private, default to 'private'
+  const [activeTab, setActiveTab] = useState<'marketplace' | 'private'>(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('view') === 'private' ? 'private' : 'marketplace';
+  });
+
+  // Helper to switch tabs and update URL
+  const handleTabSwitch = (tab: 'marketplace' | 'private') => {
+    setActiveTab(tab);
+    navigate(`?view=${tab}`, { replace: true });
+  };
 
   // State for Data
   const [marketProducts, setMarketProducts] = useState<SupplierProduct[]>([]);
@@ -59,11 +74,13 @@ function SupplierMyProductsPage() {
     }
   }, [auth.token, isSupplier, activeTab, statusFilter]);
 
+  // Load data when tab or filter changes
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Handlers
+  // --- HANDLERS ---
+
   const handleDelete = async (id: number, name: string, isMarketplace: boolean) => {
     if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
 
@@ -73,15 +90,36 @@ function SupplierMyProductsPage() {
       } else {
         await deleteInventoryItem(id);
       }
-      // Refresh list on success
-      loadData(); 
+      loadData(); // Refresh list
     } catch (err) {
       alert("Failed to delete item.");
       console.error(err);
     }
   };
 
-  // Helper: Status Badges
+  // [FIXED] Promote Handler
+  const handlePromote = async (id: number, name: string) => {
+    if (!window.confirm(`Promote "${name}" to the Marketplace?\n\nThis will create a draft/pending product that Managers can review.`)) return;
+
+    try {
+        setLoading(true); // Show loading state
+        await promoteInventoryItem(id);
+        alert(`Success! "${name}" has been promoted.`);
+        
+        // Switch to marketplace tab to see the result
+        handleTabSwitch('marketplace'); 
+    } catch (err) {
+        // Strict Type Check for Error
+        interface ApiError { message?: string; }
+        const apiError = err as ApiError;
+
+        alert("Failed to promote item: " + (apiError.message || "Unknown Error"));
+        setLoading(false); // Only stop loading on error (success triggers tab switch reload)
+    }
+  };
+
+  // --- UI HELPERS ---
+
   const getStatusBadge = (status: string): JSX.Element => {
     const styles: Record<string, string> = {
       published: 'bg-green-100 text-green-800 border-green-200',
@@ -98,7 +136,6 @@ function SupplierMyProductsPage() {
     );
   };
 
-  // Helper: Thumbnail
   const Thumbnail = ({ src, alt }: { src?: string, alt: string }) => (
     <div className="h-12 w-12 flex-shrink-0 rounded bg-gray-100 overflow-hidden border border-gray-200">
       {src ? (
@@ -121,10 +158,9 @@ function SupplierMyProductsPage() {
           <p className="text-gray-500 text-sm">Manage your public listing and private inventory.</p>
         </div>
         
-        {/* Tab Switcher */}
         <div className="flex bg-gray-100 p-1 rounded-lg">
           <button
-            onClick={() => setActiveTab('marketplace')}
+            onClick={() => handleTabSwitch('marketplace')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
               activeTab === 'marketplace' 
                 ? 'bg-white text-blue-600 shadow-sm' 
@@ -134,7 +170,7 @@ function SupplierMyProductsPage() {
             Marketplace Products
           </button>
           <button
-            onClick={() => setActiveTab('private')}
+            onClick={() => handleTabSwitch('private')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
               activeTab === 'private' 
                 ? 'bg-white text-blue-600 shadow-sm' 
@@ -145,7 +181,6 @@ function SupplierMyProductsPage() {
           </button>
         </div>
 
-        {/* Contextual "Add" Button */}
         <Link to={activeTab === 'marketplace' ? "/supplier/products/add" : "/supplier/inventory/add"}>
           <button className="w-full md:w-auto bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 font-semibold shadow-sm flex items-center justify-center gap-2">
             <span className="text-lg font-light">+</span> 
@@ -154,7 +189,7 @@ function SupplierMyProductsPage() {
         </Link>
       </div>
 
-      {/* Toolbar (Filters) */}
+      {/* Toolbar (Filters) - Only for Marketplace */}
       {activeTab === 'marketplace' && (
         <div className="flex items-center mb-4">
           <select 
@@ -237,7 +272,16 @@ function SupplierMyProductsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">RM {item.price.toFixed(2)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">{item.stock}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
-                      <button className="text-green-600 hover:text-green-900" title="Promote to Marketplace">Promote ↗</button>
+                      
+                      {/* [WIRED UP] The Promote Button */}
+                      <button 
+                          onClick={() => handlePromote(item.id, item.name)}
+                          className="text-green-600 hover:text-green-900 font-semibold" 
+                          title="Promote to Marketplace"
+                      >
+                        Promote ↗
+                      </button>
+
                       <Link to={`/supplier/inventory/edit/${item.id}`} className="text-blue-600 hover:text-blue-900">Edit</Link>
                       <button onClick={() => handleDelete(item.id, item.name, false)} className="text-red-600 hover:text-red-900">Delete</button>
                     </td>

@@ -1,16 +1,17 @@
 // src/components/supplier/InventoryForm.tsx
 
 import React, { useState, useEffect } from 'react';
-import type { InventoryItem, InventoryPayload } from '../../types/CoreTypes';
-import { createInventoryItem, updateInventoryItem } from '../../api/InventoryHandlers';
+import { 
+    createInventoryItem, 
+    updateInventoryItem, 
+    type InventoryItem, 
+    type InventoryPayload 
+} from '../../services/supplierProductService';
 
-// Define the Props for the form component
 interface InventoryFormProps {
-    // If an 'item' is passed, the form is in EDIT mode (PUT)
-    // If 'item' is null/undefined, the form is in CREATE mode (POST)
     item?: InventoryItem | null;
-    onSuccess: () => void; // Callback function after successful creation/update
-    onCancel: () => void; // Callback to close the form/modal
+    onSuccess: () => void;
+    onCancel: () => void;
 }
 
 const initialFormState: InventoryPayload = {
@@ -23,175 +24,168 @@ const initialFormState: InventoryPayload = {
     pkgLength: 0,
     pkgWidth: 0,
     pkgHeight: 0,
-    categoryName: '', // Assuming category selection returns a name
-    brandName: '',    // Assuming brand selection returns a name
+    categoryName: '',
+    brandName: '',
     status: 'draft',
 };
 
 const InventoryForm: React.FC<InventoryFormProps> = ({ item, onSuccess, onCancel }) => {
-    // Determine the initial state based on whether we are editing an existing item
     const [formData, setFormData] = useState<InventoryPayload>(initialFormState);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const isEditMode = !!item;
-    const formTitle = isEditMode ? `Edit Private Item: ${item?.name}` : 'Add New Private Inventory Item';
+    const formTitle = isEditMode ? `Edit Item: ${item?.name}` : 'Add Private Inventory Item';
 
-    // Effect to populate form when an item object changes (in edit mode)
     useEffect(() => {
         if (isEditMode && item) {
-            // Map the InventoryItem (including ID) to the InventoryPayload
-            // We only take the fields that are part of the payload
-            const payload: InventoryPayload = {
+            setFormData({
                 name: item.name,
-                description: item.description,
+                description: item.description || '',
                 price: item.price,
                 sku: item.sku,
-                stockQuantity: item.stockQuantity,
-                weight: item.weight,
-                pkgLength: item.pkgLength,
-                pkgWidth: item.pkgWidth,
-                pkgHeight: item.pkgHeight,
+                stockQuantity: item.stockQuantity || item.stock || 0,
+                weight: item.weight || 0,
+                pkgLength: item.pkgLength || 0,
+                pkgWidth: item.pkgWidth || 0,
+                pkgHeight: item.pkgHeight || 0,
                 categoryName: item.categoryName || '',
                 brandName: item.brandName || '',
-                status: item.status !== 'promoted' ? item.status : 'ready', // Prevent saving back as 'promoted'
-            };
-            setFormData(payload);
+                status: (item.status && item.status !== 'promoted') ? item.status : 'draft',
+            });
         } else if (!isEditMode) {
             setFormData(initialFormState);
         }
     }, [item, isEditMode]);
 
-
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
-        
-        // Handle numeric conversion for number inputs
         const newValue = (type === 'number' || name === 'price' || name.startsWith('pkg')) 
             ? parseFloat(value) || 0 
             : value;
         
-        setFormData({
-            ...formData,
-            [name]: newValue,
-        });
+        setFormData({ ...formData, [name]: newValue });
     };
-    
-    // Simple client-side validation
-    const validate = (): boolean => {
-        if (!formData.name.trim() || !formData.description.trim()) {
-            setError("Name and Description are required.");
-            return false;
-        }
-        if (formData.price <= 0 || formData.stockQuantity < 0) {
-            setError("Price must be greater than zero and Stock Quantity cannot be negative.");
-            return false;
-        }
-        setError(null);
-        return true;
-    };
-
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!validate()) return;
-
         setIsSubmitting(true);
         setError(null);
 
         try {
             if (isEditMode && item) {
-                // UPDATE: PUT /v1/supplier/inventory/:id
                 await updateInventoryItem(item.id, formData);
             } else {
-                // CREATE: POST /v1/supplier/inventory
                 await createInventoryItem(formData);
             }
-            
-            // Success: clear form, notify parent, and close
             onSuccess();
-
         } catch (err) {
-            // FIX: Check if the error object has a 'message' property before accessing it.
-            let errorMessage = "An unknown error occurred.";
-            if (err instanceof Error) {
-                // If it's a standard JS Error object
-                errorMessage = err.message;
-            } else if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
-                // If it's an Axios/API error object with a message property
-                errorMessage = err.message;
+            // [FIX] Error 3: Avoid 'any'. Define the expected error shape.
+            interface ApiError {
+                message?: string;
             }
-            
-            setError(`Operation failed. Please check your data. Error: ${errorMessage}`);
+            const apiError = err as ApiError;
+
+            console.error("Form error:", err);
+            setError(apiError.message || "Operation failed.");
         } finally {
             setIsSubmitting(false);
         }
     };
 
+    // Shared Styles
+    const labelStyle = "block text-sm font-medium text-gray-700 mb-1";
+    const inputStyle = "w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border";
+
     return (
-        <div className="inventory-form-wrapper">
-            <h2>{formTitle}</h2>
+        <div className="bg-white rounded-lg shadow-lg border border-gray-100 overflow-hidden">
+            {/* Header */}
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">{formTitle}</h2>
+                <p className="text-xs text-gray-500 mt-1">Items created here are private until promoted.</p>
+            </div>
+
+            {error && (
+                <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                    {error}
+                </div>
+            )}
             
-            {error && <p className="error-message">{error}</p>}
-            
-            <form onSubmit={handleSubmit} className="taptosell-form-section">
+            <form onSubmit={handleSubmit} className="p-6 space-y-6">
                 
-                {/* --- 1. CORE DETAILS --- */}
-                <h3>Core Item Details</h3>
-                <div className="form-group">
-                    <label htmlFor="name">Name*</label>
-                    <input type="text" id="name" name="name" value={formData.name} onChange={handleChange} required />
-                </div>
-                <div className="form-group">
-                    <label htmlFor="description">Description*</label>
-                    <textarea id="description" name="description" value={formData.description} onChange={handleChange} required />
-                </div>
-                <div className="form-group form-grid-3">
-                    <label htmlFor="price">Price (Your Cost)*</label>
-                    <input type="number" id="price" name="price" min="0.01" step="0.01" value={formData.price} onChange={handleChange} required />
-                
-                    <label htmlFor="sku">SKU</label>
-                    <input type="text" id="sku" name="sku" value={formData.sku} onChange={handleChange} />
-
-                    <label htmlFor="stockQuantity">Stock Quantity*</label>
-                    <input type="number" id="stockQuantity" name="stockQuantity" min="0" value={formData.stockQuantity} onChange={handleChange} required />
-                </div>
-
-
-                {/* --- 2. DIMENSIONS (Mandatory for Dropshipping) --- */}
-                <h3>Shipping Dimensions</h3>
-                <div className="form-group form-grid-3">
-                    <label htmlFor="weight">Weight (kg)</label>
-                    <input type="number" id="weight" name="weight" min="0" step="0.01" value={formData.weight} onChange={handleChange} />
-                
-                    <label htmlFor="pkgLength">Length (cm)</label>
-                    <input type="number" id="pkgLength" name="pkgLength" min="0" value={formData.pkgLength} onChange={handleChange} />
-                    
-                    <label htmlFor="pkgWidth">Width (cm)</label>
-                    <input type="number" id="pkgWidth" name="pkgWidth" min="0" value={formData.pkgWidth} onChange={handleChange} />
-                    
-                    <label htmlFor="pkgHeight">Height (cm)</label>
-                    <input type="number" id="pkgHeight" name="pkgHeight" min="0" value={formData.pkgHeight} onChange={handleChange} />
-                </div>
-                
-                {/* --- 3. CLASSIFICATION --- */}
-                <h3>Classification (Private)</h3>
-                <div className="form-group form-grid-2">
-                    <label htmlFor="categoryName">Private Category</label>
-                    <input type="text" id="categoryName" name="categoryName" value={formData.categoryName} onChange={handleChange} placeholder="e.g., Seasonal" />
-                    {/* Note: In a later phase, this will be a dropdown fetching GET /v1/supplier/inventory/categories */}
-
-                    <label htmlFor="brandName">Private Brand</label>
-                    <input type="text" id="brandName" name="brandName" value={formData.brandName} onChange={handleChange} placeholder="e.g., My Company Co." />
-                    {/* Note: In a later phase, this will be a dropdown fetching GET /v1/supplier/inventory/brands */}
+                {/* Section 1: Core Details */}
+                <div>
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 border-b pb-1">Core Details</h3>
+                    <div className="grid grid-cols-1 gap-y-4 gap-x-4">
+                        <div>
+                            <label htmlFor="name" className={labelStyle}>Product Name*</label>
+                            <input type="text" id="name" name="name" value={formData.name} onChange={handleChange} required className={inputStyle} placeholder="e.g. Winter Jacket" />
+                        </div>
+                        <div>
+                            <label htmlFor="description" className={labelStyle}>Description*</label>
+                            <textarea id="description" name="description" rows={3} value={formData.description} onChange={handleChange} required className={inputStyle} placeholder="Product details..." />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                        <div>
+                            <label htmlFor="price" className={labelStyle}>Your Price (RM)*</label>
+                            <input type="number" id="price" name="price" min="0.01" step="0.01" value={formData.price} onChange={handleChange} required className={inputStyle} />
+                        </div>
+                        <div>
+                            <label htmlFor="stockQuantity" className={labelStyle}>Stock Qty*</label>
+                            <input type="number" id="stockQuantity" name="stockQuantity" min="0" value={formData.stockQuantity} onChange={handleChange} required className={inputStyle} />
+                        </div>
+                        <div>
+                            <label htmlFor="sku" className={labelStyle}>SKU (Optional)</label>
+                            <input type="text" id="sku" name="sku" value={formData.sku} onChange={handleChange} className={inputStyle} />
+                        </div>
+                    </div>
                 </div>
 
-                {/* --- 4. FORM ACTIONS --- */}
-                <div className="form-actions">
-                    <button type="button" className="button-secondary" onClick={onCancel} disabled={isSubmitting}>
+                {/* Section 2: Dimensions */}
+                <div>
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 border-b pb-1 mt-2">Shipping Dimensions</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                            <label htmlFor="weight" className={labelStyle}>Weight (kg)</label>
+                            <input type="number" id="weight" name="weight" min="0" step="0.01" value={formData.weight} onChange={handleChange} className={inputStyle} />
+                        </div>
+                        <div>
+                            <label htmlFor="pkgLength" className={labelStyle}>Length (cm)</label>
+                            <input type="number" id="pkgLength" name="pkgLength" min="0" value={formData.pkgLength} onChange={handleChange} className={inputStyle} />
+                        </div>
+                        <div>
+                            <label htmlFor="pkgWidth" className={labelStyle}>Width (cm)</label>
+                            <input type="number" id="pkgWidth" name="pkgWidth" min="0" value={formData.pkgWidth} onChange={handleChange} className={inputStyle} />
+                        </div>
+                        <div>
+                            <label htmlFor="pkgHeight" className={labelStyle}>Height (cm)</label>
+                            <input type="number" id="pkgHeight" name="pkgHeight" min="0" value={formData.pkgHeight} onChange={handleChange} className={inputStyle} />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Section 3: Classification */}
+                <div>
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3 border-b pb-1 mt-2">Private Classification</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="categoryName" className={labelStyle}>Private Category</label>
+                            <input type="text" id="categoryName" name="categoryName" value={formData.categoryName} onChange={handleChange} className={inputStyle} placeholder="e.g. Seasonal" />
+                        </div>
+                        <div>
+                            <label htmlFor="brandName" className={labelStyle}>Private Brand</label>
+                            <input type="text" id="brandName" name="brandName" value={formData.brandName} onChange={handleChange} className={inputStyle} placeholder="e.g. My Brand" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer Actions */}
+                <div className="pt-4 flex justify-end gap-3 border-t border-gray-100">
+                    <button type="button" onClick={onCancel} disabled={isSubmitting} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                         Cancel
                     </button>
-                    <button type="submit" className="button-primary" disabled={isSubmitting}>
+                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                         {isSubmitting ? 'Saving...' : (isEditMode ? 'Save Changes' : 'Create Item')}
                     </button>
                 </div>

@@ -5,9 +5,10 @@ import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth'; 
 
 // --- Existing Imports ---
-import MyInventoryPage from '../components/supplier/MyInventoryPage'; 
+// [REMOVED] Legacy MyInventoryPage (Source of 404 Errors)
 import SupplierMyProductsPage from './SupplierMyProductsPage'; 
 import SupplierWalletPage from './SupplierWalletPage'; 
+
 import ProductApprovalQueue from '../components/manager/ProductApprovalQueue';
 import WithdrawalRequestQueue from '../components/manager/WithdrawalRequestQueue';
 import PriceAppealQueue from '../components/manager/PriceAppealQueue';
@@ -71,13 +72,11 @@ function DashboardPage() {
     }
 
     // --- FIX FOR ERROR 3: Local Interface Casting ---
-    // We define this *after* the null check above so we know 'user' exists.
     interface UserWithProfile {
         full_name?: string;
         email: string;
         role: string;
     }
-    // We safely cast 'user' to this interface to access 'full_name' without using 'any'
     const safeUser = user as unknown as UserWithProfile;
     // -------------------------------------------------
 
@@ -101,8 +100,9 @@ function DashboardPage() {
     // 2. Role-Based Navigation Helpers
     const renderSupplierContent = () => {
         const navItems = [
-            { id: 'products', label: 'Marketplace Products', Component: SupplierMyProductsPage },
-            { id: 'inventory', label: 'My Private Inventory', Component: MyInventoryPage }, 
+            // [UPDATED] Combined "Marketplace" and "Inventory" into one Dashboard View
+            // This component (SupplierMyProductsPage) handles the tabs internally.
+            { id: 'products', label: 'Products & Inventory', Component: SupplierMyProductsPage },
             { id: 'wallet', label: 'My Wallet', Component: SupplierWalletPage },
         ];
 
@@ -194,12 +194,11 @@ function DashboardPage() {
         );
     }
 
-    // 3. Dropshipper Dashboard View (Updated with Fixes)
+    // 3. Dropshipper Dashboard View
     if (user.role === 'dropshipper') {
         return (
             <div className="p-6 max-w-7xl mx-auto space-y-6 relative">
                 <div className="flex justify-between items-center">
-                    {/* USE THE SAFE USER VARIABLE HERE */}
                     <h1 className="text-2xl font-bold text-gray-800">
                         Welcome back, {safeUser.full_name || safeUser.email}
                     </h1>
@@ -323,7 +322,6 @@ function DashboardPage() {
         );
     }
 
-    // Default fallback
     return (
         <div className="p-8 text-center">
             <h1 className="text-xl text-gray-500">Unknown User Role</h1>

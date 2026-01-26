@@ -1,9 +1,11 @@
 // src/services/supplierProductService.ts
 import apiClient from './api';
 
-// --- Types ---
+// ==========================================
+// 1. MARKETPLACE PRODUCTS (Public Listing)
+// ==========================================
 
-// 1. Base Product CORE
+// Base Core
 interface BaseProductCore {
     name: string;
     description: string;
@@ -17,7 +19,7 @@ interface BaseProductCore {
     pkg_height: number;
 }
 
-// 2. Base Product
+// Base Product
 interface BaseProduct extends BaseProductCore {
     id: number;
 }
@@ -33,19 +35,7 @@ export interface SupplierProduct extends BaseProduct {
     variations?: unknown;
 }
 
-// Private Inventory Item
-export interface InventoryItem {
-    id: number;
-    name: string;
-    sku: string;
-    stock: number;
-    price: number;
-    description?: string;
-    created_at?: string;
-}
-
-// --- NEW: Submission Payload Types (Fixes 'Unexpected any') ---
-
+// Submission Payload Types (Marketplace)
 export interface VariantSubmissionItem {
     sku: string;
     price: number;
@@ -62,7 +52,6 @@ export interface ProductSubmissionPayload {
     category_ids: number[];
     images: string[];
     videoUrl: string;
-    // Use 'unknown' or specific object structure instead of 'any' to satisfy linter
     sizeChart: { type: 'template' | 'image'; url?: string; templateId?: string } | null;
     variationImages: Record<string, string>;
     simpleProduct: {
@@ -81,7 +70,7 @@ export interface ProductSubmissionPayload {
     };
 }
 
-// --- Detailed Response for Edit Mode (Fetching) ---
+// Edit Mode Response (Marketplace)
 export interface BackendVariantOption {
     name: string;
     value: string;
@@ -104,86 +93,144 @@ export interface ProductDetailResponse {
     status: string;
     isVariable: boolean;
     sku?: string;
-
-    // Prices & Stock
     priceToTTS: number;
     srp: number;
     stockQuantity: number;
     commissionRate?: number;
-
-    // Dimensions
     weight?: number;
     packageDimensions?: {
         length: number;
         width: number;
         height: number;
     };
-
-    // Media
     images: string[];
     videoUrl: string;
     sizeChart: { type: 'template' | 'image'; url?: string; templateId?: string } | null;
     variationImages: Record<string, string>;
-
-    // Relations
     brandId: number;
     brandName: string;
     category_ids: number[];
-
-    // Variants
     variants: BackendVariant[];
 }
 
 
-// --- API Functions ---
+// ==========================================
+// 2. PRIVATE INVENTORY (Internal Stock)
+// ==========================================
 
-/**
- * @description Calls GET /v1/products/supplier/me
- */
+// Private Inventory Item (Reading from DB)
+export interface InventoryItem {
+    id: number;
+    name: string;
+    sku: string;
+    stock: number;         // DB often calls this 'stock'
+    stockQuantity?: number; // Form often expects 'stockQuantity' (mapped)
+    price: number;
+    description?: string;
+    created_at?: string;
+    
+    // Optional fields for the Form
+    weight?: number;
+    pkgLength?: number;
+    pkgWidth?: number;
+    pkgHeight?: number;
+    categoryName?: string;
+    brandName?: string;
+    status?: string;
+}
+
+// Private Inventory Payload (Writing to DB)
+export interface InventoryPayload {
+    name: string;
+    description: string;
+    price: number;
+    sku: string;
+    stockQuantity: number;
+    weight: number;
+    pkgLength: number;
+    pkgWidth: number;
+    pkgHeight: number;
+    categoryName: string;
+    brandName: string;
+    status: string;
+}
+
+
+// ==========================================
+// API FUNCTIONS
+// ==========================================
+
+// --- MARKETPLACE HANDLERS ---
+
 export const fetchMyProducts = async (statusFilter?: string): Promise<SupplierProduct[]> => {
     const params = statusFilter ? { status: statusFilter } : {};
     const response = await apiClient.get<{ products: SupplierProduct[] }>('/products/supplier/me', { params });
     return response.data.products || []; 
 };
 
-/**
- * @description Calls GET /v1/products/:id
- */
 export const fetchProductById = async (id: string | number): Promise<ProductDetailResponse> => {
     const response = await apiClient.get<{ product: ProductDetailResponse }>(`/products/${id}`);
     return response.data.product;
 };
 
-/**
- * @description Calls POST /v1/products
- */
 export const createProduct = async (payload: ProductSubmissionPayload): Promise<{product_id: number}> => {
     const response = await apiClient.post<{product_id: number}>('/products', payload);
     return response.data;
 };
 
-/**
- * @description Calls PUT /v1/products/:id
- * Fixed: Replaced 'any' with 'ProductSubmissionPayload'
- */
 export const updateProduct = async (productId: string | number, payload: ProductSubmissionPayload): Promise<void> => {
     await apiClient.put(`/products/${productId}`, payload);
 };
 
-/**
- * @description Calls DELETE /v1/products/:id
- */
 export const deleteProduct = async (productId: number): Promise<void> => {
     await apiClient.delete(`/products/${productId}`);
 };
 
-// [NEW] Fetch Private Inventory
+// --- PRIVATE INVENTORY HANDLERS ---
+
 export const fetchPrivateInventory = async (): Promise<InventoryItem[]> => {
     const response = await apiClient.get<{ items: InventoryItem[] }>('/supplier/inventory');
-    return response.data.items || [];
+    
+    return (response.data.items || []).map(item => {
+        let cleanSku = item.sku;
+
+        // [FIX] Define the specific shape of the Go object we received
+        interface GoNullString {
+            String: string;
+            Valid: boolean;
+        }
+
+        // Check if 'sku' is actually an object at runtime (despite TS thinking it's a string)
+        if (item.sku && typeof item.sku === 'object' && 'String' in item.sku) {
+            // Safe Cast: Cast to unknown first, then to our specific interface
+            const skuObj = item.sku as unknown as GoNullString;
+            cleanSku = skuObj.String;
+        }
+
+        return {
+            ...item,
+            sku: cleanSku,       // Use the clean string
+            stockQuantity: item.stock 
+        };
+    });
 };
 
-// [NEW] Delete Private Inventory Item
+// [NEW] Create Private Item
+export const createInventoryItem = async (payload: InventoryPayload): Promise<InventoryItem> => {
+    const response = await apiClient.post<{ item: InventoryItem }>('/supplier/inventory', payload);
+    return response.data.item;
+};
+
+// [NEW] Update Private Item
+export const updateInventoryItem = async (id: number, payload: InventoryPayload): Promise<void> => {
+    await apiClient.put(`/supplier/inventory/${id}`, payload);
+};
+
 export const deleteInventoryItem = async (id: number): Promise<void> => {
     await apiClient.delete(`/supplier/inventory/${id}`);
+};
+
+// [NEW] Promote to Marketplace
+export const promoteInventoryItem = async (id: number): Promise<void> => {
+    await apiClient.post(`/supplier/inventory/${id}/promote`);
 };

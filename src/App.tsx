@@ -8,7 +8,10 @@ import DashboardPage from './pages/DashboardPage';
 import CatalogPage from './pages/CatalogPage';
 
 // Supplier Pages
-import SupplierProductFormPage from './pages/SupplierProductFormPage';
+import SupplierProductFormPage from './pages/SupplierProductFormPage'; // Marketplace Form (Complex)
+import SupplierMyProductsPage from './pages/SupplierMyProductsPage';   // The List View
+// [CRITICAL IMPORT] Make sure this matches your file name exactly
+import SupplierInventoryFormPage from './pages/SupplierInventoryFormPage'; 
 
 function App() {
   return (
@@ -23,11 +26,19 @@ function App() {
       <Route path="/catalog" element={<CatalogPage />}  />
 
       {/* SUPPLIER ROUTES */}
-      {/* Matches the <Link> in SupplierMyProductsPage */}
-      <Route path="/supplier/products/add" element={<SupplierProductFormPage />} />
       
-      {/* [NEW] Edit Route - Matches the "Edit" button */}
+      {/* 1. The List View (Dashboard) */}
+      <Route path="/supplier/products" element={<SupplierMyProductsPage />} />
+
+      {/* 2. Marketplace Operations (Public) */}
+      <Route path="/supplier/products/add" element={<SupplierProductFormPage />} />
       <Route path="/supplier/products/edit/:id" element={<SupplierProductFormPage />} />
+
+      {/* 3. Private Inventory Operations (Private) 
+         [FIX IS HERE] These routes must point to 'SupplierInventoryFormPage', NOT 'SupplierMyProductsPage'
+      */}
+      <Route path="/supplier/inventory/add" element={<SupplierInventoryFormPage />} />
+      <Route path="/supplier/inventory/edit/:id" element={<SupplierInventoryFormPage />} />
 
       {/* Default route */}
       <Route path="/" element={<LoginPage />} />
