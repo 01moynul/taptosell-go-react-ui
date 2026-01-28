@@ -296,7 +296,7 @@ function DashboardPage() {
                                                 <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                                                     <td className="px-6 py-4 font-medium text-gray-900">#{order.id}</td>
                                                     <td className="px-6 py-4 text-gray-500">
-                                                        {new Date(order.created_at).toLocaleDateString()}
+                                                        {new Date(order.order_date).toLocaleDateString()}
                                                     </td>
                                                     <td className="px-6 py-4 text-gray-900">
                                                         RM {order.total_amount.toFixed(2)}
