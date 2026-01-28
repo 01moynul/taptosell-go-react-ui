@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth'; 
+import { useAuth } from '../hooks/useAuth';
+import apiClient from '../services/api'; // Used for fetching trending products
 
-// --- Existing Imports ---
-// [REMOVED] Legacy MyInventoryPage (Source of 404 Errors)
-import SupplierMyProductsPage from './SupplierMyProductsPage'; 
-import SupplierWalletPage from './SupplierWalletPage'; 
+// --- Component Imports (Role Specific) ---
+import SupplierMyProductsPage from './SupplierMyProductsPage';
+import SupplierWalletPage from './SupplierWalletPage';
 
 import ProductApprovalQueue from '../components/manager/ProductApprovalQueue';
 import WithdrawalRequestQueue from '../components/manager/WithdrawalRequestQueue';
@@ -15,22 +15,38 @@ import PriceAppealQueue from '../components/manager/PriceAppealQueue';
 import GlobalSettingsPage from '../components/manager/GlobalSettingsPage';
 import GlobalTaxonomyManager from '../components/manager/GlobalTaxonomyManager';
 import UserManagementPage from '../components/manager/UserManagementPage';
-import { AIChatWindow } from '../components/shared/AIChatWindow'; 
+import { AIChatWindow } from '../components/shared/AIChatWindow';
 
 import ManagerDashboardStats from '../components/manager/ManagerDashboardStats';
-// --- FIX FOR ERROR 1: Explicit 'type' imports ---
+
+// --- Service Imports ---
 import { fetchDropshipperStats, type DropshipperStats } from '../services/dashboardService';
 import { fetchMyOrders, type DropshipperOrder } from '../services/orderService';
 
-/**
- * Helper to get the current 'view' parameter from the URL.
- */
+// --- Helper for URL View Params ---
 const useDashboardView = () => {
     return new URLSearchParams(useLocation().search).get('view') || 'products';
 };
 
+// --- Types ---
+interface TrendingProduct {
+    id: number;
+    name: string;
+    price: number;
+    tts_price: number;
+    images: string[] | null;
+}
+
+// Helper Interface to fix "unknown" user type issues
+interface UserWithProfile {
+    full_name?: string;
+    email: string;
+    role: string;
+}
+
 /**
  * The main component for all user dashboards.
+ * It renders different layouts based on user.role.
  */
 function DashboardPage() {
     const { user } = useAuth();
@@ -42,6 +58,7 @@ function DashboardPage() {
     // --- Dropshipper State ---
     const [dsStats, setDsStats] = useState<DropshipperStats | null>(null);
     const [recentOrders, setRecentOrders] = useState<DropshipperOrder[]>([]);
+    const [trending, setTrending] = useState<TrendingProduct[]>([]);
     const [dsLoading, setDsLoading] = useState(false);
 
     // --- Data Fetching for Dropshippers ---
@@ -50,12 +67,20 @@ function DashboardPage() {
             const loadData = async () => {
                 setDsLoading(true);
                 try {
-                    const [stats, orders] = await Promise.all([
+                    // Fetch Stats, Orders, AND Trending Products in parallel
+                    const [statsRes, ordersRes, productsRes] = await Promise.all([
                         fetchDropshipperStats(),
-                        fetchMyOrders()
+                        fetchMyOrders(),
+                        apiClient.get<{ products: TrendingProduct[] }>('/products/search')
                     ]);
-                    setDsStats(stats);
-                    setRecentOrders(orders.slice(0, 5));
+
+                    setDsStats(statsRes);
+                    setRecentOrders(ordersRes.slice(0, 5)); // Top 5 Orders
+                    
+                    // Top 5 Trending Products
+                    if (productsRes.data && productsRes.data.products) {
+                        setTrending(productsRes.data.products.slice(0, 5));
+                    }
                 } catch (error) {
                     console.error("Failed to load dropshipper dashboard", error);
                 } finally {
@@ -72,14 +97,7 @@ function DashboardPage() {
         return <div className="p-8 text-center">Loading User Data...</div>; 
     }
 
-    // --- FIX FOR ERROR 3: Local Interface Casting ---
-    interface UserWithProfile {
-        full_name?: string;
-        email: string;
-        role: string;
-    }
     const safeUser = user as unknown as UserWithProfile;
-    // -------------------------------------------------
 
     // --- HELPER: Render the Floating Chat Widget ---
     const renderChatWidget = () => (
@@ -98,11 +116,9 @@ function DashboardPage() {
         </div>
     );
 
-    // 2. Role-Based Navigation Helpers
+    // 2. Supplier Dashboard Content
     const renderSupplierContent = () => {
         const navItems = [
-            // [UPDATED] Combined "Marketplace" and "Inventory" into one Dashboard View
-            // This component (SupplierMyProductsPage) handles the tabs internally.
             { id: 'products', label: 'Products & Inventory', Component: SupplierMyProductsPage },
             { id: 'wallet', label: 'My Wallet', Component: SupplierWalletPage },
         ];
@@ -134,7 +150,8 @@ function DashboardPage() {
         );
     };
 
-const renderManagerContent = () => {
+    // 3. Manager Dashboard Content
+    const renderManagerContent = () => {
         const navItems = [
             { id: 'products', label: 'Product Approval', Component: ProductApprovalQueue },
             { id: 'withdrawals', label: 'Withdrawals', Component: WithdrawalRequestQueue },
@@ -149,10 +166,7 @@ const renderManagerContent = () => {
 
         return (
             <div className="manager-dashboard">
-                {/* [NEW] The Stats Row (Always Visible) */}
                 <ManagerDashboardStats />
-
-                {/* Existing Navigation Tabs */}
                 <nav className="flex flex-wrap gap-2 border-b mb-6 pb-2">
                     {navItems.map((item) => (
                         <Link 
@@ -177,7 +191,7 @@ const renderManagerContent = () => {
 
     // --- MAIN RENDER LOGIC ---
 
-    // 1. Supplier Dashboard
+    // A. Supplier View
     if (user.role === 'supplier') {
         return (
             <div className="p-6 max-w-7xl mx-auto relative">
@@ -188,7 +202,7 @@ const renderManagerContent = () => {
         );
     } 
     
-    // 2. Manager/Admin Dashboard
+    // B. Manager/Admin View
     if (user.role === 'manager' || user.role === 'administrator') {
         return (
             <div className="p-6 max-w-7xl mx-auto relative">
@@ -199,7 +213,7 @@ const renderManagerContent = () => {
         );
     }
 
-    // 3. Dropshipper Dashboard View
+    // C. Dropshipper View (The "Buyer's Cockpit")
     if (user.role === 'dropshipper') {
         return (
             <div className="p-6 max-w-7xl mx-auto space-y-6 relative">
@@ -219,7 +233,7 @@ const renderManagerContent = () => {
                     </div>
                 ) : (
                     <>
-                        {/* KPI Cards */}
+                        {/* 1. KPI Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Wallet Balance</h3>
@@ -250,7 +264,7 @@ const renderManagerContent = () => {
                             </div>
                         </div>
 
-                        {/* Recent Orders Widget */}
+                        {/* 2. Recent Orders Widget */}
                         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                                 <h2 className="text-lg font-semibold text-gray-800">Recent Orders</h2>
@@ -288,29 +302,24 @@ const renderManagerContent = () => {
                                                         RM {order.total_amount.toFixed(2)}
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium
+                                                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium uppercase
                                                             ${order.status === 'on-hold' ? 'bg-red-100 text-red-800' : 
                                                               order.status === 'processing' ? 'bg-blue-100 text-blue-800' : 
                                                               'bg-green-100 text-green-800'
                                                             }`}>
-                                                            {order.status.toUpperCase()}
+                                                            {order.status}
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         {order.status === 'on-hold' ? (
                                                             <Link 
-                                                                to={`/dropshipper/orders/${order.id}`} 
+                                                                to={`/dropshipper/orders`} 
                                                                 className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none"
                                                             >
                                                                 Pay Now
                                                             </Link>
                                                         ) : (
-                                                            <Link 
-                                                                to={`/dropshipper/orders/${order.id}`} 
-                                                                className="text-indigo-600 hover:text-indigo-900 text-xs font-medium"
-                                                            >
-                                                                View Details
-                                                            </Link>
+                                                            <span className="text-gray-400 text-xs">View Only</span>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -319,6 +328,43 @@ const renderManagerContent = () => {
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+
+                        {/* 3. Trending Products Carousel */}
+                        <div className="mt-8">
+                            <h2 className="text-lg font-semibold text-gray-800 mb-4">Trending Now</h2>
+                            {trending.length === 0 ? (
+                                <p className="text-gray-500 text-sm">No products available yet.</p>
+                            ) : (
+                                <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                                    {trending.map((product) => (
+                                        <Link 
+                                            to={`/catalog`} 
+                                            key={product.id} 
+                                            className="min-w-[200px] w-[200px] bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow flex-shrink-0"
+                                        >
+                                            <div className="h-32 bg-gray-100 rounded-md mb-3 overflow-hidden flex items-center justify-center">
+                                                {/* Simple image check: if array exists, show first one */}
+                                                {product.images && product.images.length > 0 ? (
+                                                     <img 
+                                                        src={product.images[0]} 
+                                                        alt={product.name} 
+                                                        className="h-full w-full object-cover" 
+                                                     />
+                                                ) : (
+                                                    <span className="text-gray-400 text-xs">No Image</span>
+                                                )}
+                                            </div>
+                                            <h3 className="font-medium text-gray-900 truncate" title={product.name}>
+                                                {product.name}
+                                            </h3>
+                                            <p className="text-indigo-600 font-bold mt-1">
+                                                RM {product.tts_price.toFixed(2)}
+                                            </p>
+                                        </Link>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </>
                 )}

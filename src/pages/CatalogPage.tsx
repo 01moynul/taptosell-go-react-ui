@@ -2,34 +2,31 @@
 import { useEffect, useState } from 'react';
 import apiClient from '../services/api';
 import axios from 'axios';
-import { useAuth } from '../hooks/useAuth'; // 1. Import useAuth
-import { addToCart } from '../services/cartService'; // 2. Import cart service
+import { useAuth } from '../hooks/useAuth';
+import { addToCart } from '../services/cartService';
 
-// Define the shape of a single product based on the Go models
 interface Product {
   id: number;
   name: string;
-  price: number; // Supplier Price
-  tts_price: number; // TapToSell Price (Supplier Price + Commission)
+  price: number;
+  tts_price: number;
   stock: number;
-  // Add other required fields later (image, description, etc.)
 }
 
 function CatalogPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const auth = useAuth(); // 3. Use the auth hook
+  const auth = useAuth();
   const isDropshipper = auth.user?.role === 'dropshipper';
   const [statusMessage, setStatusMessage] = useState<string>('');
-
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        // API Blueprint: GET /v1/products/search (public endpoint)
         const response = await apiClient.get<{ products: Product[] }>('/products/search');
-        setProducts(response.data.products);
+        // FIX: Ensure we default to [] if backend returns null
+        setProducts(response.data.products || []); 
       } catch (err) {
         if (axios.isAxiosError(err) && err.response) {
           setError(err.response.data.message || 'Failed to load product catalog.');
@@ -42,9 +39,8 @@ function CatalogPage() {
     };
 
     fetchProducts();
-  }, []); // Run only once on component mount
+  }, []);
 
-  // --- NEW HANDLER FUNCTION ---
   const handleAddToCart = async (productId: number, productName: string) => {
     if (!auth.token || !isDropshipper) {
       setStatusMessage('Error: You must be a logged-in Dropshipper to add items to the cart.');
@@ -52,7 +48,7 @@ function CatalogPage() {
     }
 
     try {
-      await addToCart(productId, 1); // Add 1 unit
+      await addToCart(productId, 1);
       setStatusMessage(`Success: Added 1 unit of "${productName}" to your cart!`);
     } catch (err) {
       const msg = axios.isAxiosError(err) && err.response?.data?.message 
@@ -60,52 +56,60 @@ function CatalogPage() {
         : `Failed to add "${productName}" to cart.`;
       setStatusMessage(`Error: ${msg}`);
     } finally {
-      // Clear status message after 5 seconds
       setTimeout(() => setStatusMessage(''), 5000);
     }
   };
-  // --- END NEW HANDLER FUNCTION ---
 
-  if (loading) {
-    return <h1>Loading Product Catalog...</h1>;
-  }
-
-  if (error) {
-    return <h1 style={{ color: 'red' }}>Error: {error}</h1>;
-  }
+  if (loading) return <div className="p-8 text-center text-xl">Loading Product Catalog...</div>;
+  if (error) return <div className="p-8 text-center text-red-600 font-bold">Error: {error}</div>;
 
   return (
-    <div>
-      <h1>Product Catalog ({products.length} Items)</h1>
-      <p>This page shows all published products from our marketplace.</p>
+    <div className="p-6 max-w-7xl mx-auto">
+      <h1 className="text-3xl font-bold mb-4">Product Catalog ({products.length} Items)</h1>
       
-      {/* Role-based warning */}
-      {!auth.token && <p style={{ color: 'orange' }}>**Please log in as a Dropshipper to use the cart.**</p>}
-      {auth.token && !isDropshipper && <p style={{ color: 'red' }}>**Only Dropshippers can use the cart. Your role is: {auth.user?.role}.**</p>}
-
-      {/* Status Message Display */}
+      {/* Status Messages */}
       {statusMessage && (
-        <div style={{ padding: '10px', backgroundColor: statusMessage.startsWith('Error') ? '#fdd' : '#dfd', border: statusMessage.startsWith('Error') ? '1px solid red' : '1px solid green', marginBottom: '20px' }}>
+        <div className={`p-4 mb-6 rounded ${statusMessage.startsWith('Error') ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
           {statusMessage}
         </div>
       )}
 
-      {/* Product Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
-        {products.map(product => (
-          <div key={product.id} style={{ border: '1px solid #ccc', padding: '15px' }}>
-            <h3>{product.name}</h3>
-            <p>Price (Dropshipper Cost): **RM {product.tts_price.toFixed(2)}**</p>
-            <p>Stock: {product.stock}</p>
-            <button 
-              onClick={() => handleAddToCart(product.id, product.name)}
-              disabled={!isDropshipper || product.stock === 0} // Disable if not Dropshipper or out of stock
-            >
-              {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
-            </button>
+      {products.length === 0 ? (
+          <div className="text-center py-10 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+              <p className="text-gray-500">No products found. Suppliers need to publish products first.</p>
           </div>
-        ))}
-      </div>
+      ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {products.map(product => (
+              <div key={product.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 flex flex-col justify-between">
+                <div>
+                    <h3 className="text-xl font-semibold text-gray-800 mb-2">{product.name}</h3>
+                    <div className="flex justify-between items-center mb-4">
+                        <span className="text-gray-500 text-sm">Dropshipper Cost:</span>
+                        <span className="text-indigo-600 font-bold text-lg">RM {product.tts_price.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-4">
+                        <span className="text-gray-500 text-sm">Stock:</span>
+                        <span className={`font-medium ${product.stock > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {product.stock} units
+                        </span>
+                    </div>
+                </div>
+                <button 
+                  onClick={() => handleAddToCart(product.id, product.name)}
+                  disabled={!isDropshipper || product.stock === 0}
+                  className={`w-full py-2 px-4 rounded font-medium transition-colors ${
+                      !isDropshipper || product.stock === 0 
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  }`}
+                >
+                  {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
+                </button>
+              </div>
+            ))}
+          </div>
+      )}
     </div>
   );
 }

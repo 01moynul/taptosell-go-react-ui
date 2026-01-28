@@ -7,10 +7,14 @@ import VerifyEmailPage from './pages/VerifyEmailPage';
 import DashboardPage from './pages/DashboardPage';
 import CatalogPage from './pages/CatalogPage';
 
-// Supplier Pages
-import SupplierProductFormPage from './pages/SupplierProductFormPage'; // Marketplace Form (Complex)
-import SupplierMyProductsPage from './pages/SupplierMyProductsPage';   // The List View
-// [CRITICAL IMPORT] Make sure this matches your file name exactly
+// --- Dropshipper Imports (NEW) ---
+import CheckoutPage from './pages/CheckoutPage';
+import DropshipperWalletPage from './pages/DropshipperWalletPage';
+import DropshipperOrdersPage from './pages/DropshipperOrdersPage';
+
+// --- Supplier Imports ---
+import SupplierProductFormPage from './pages/SupplierProductFormPage'; 
+import SupplierMyProductsPage from './pages/SupplierMyProductsPage';   
 import SupplierInventoryFormPage from './pages/SupplierInventoryFormPage'; 
 
 function App() {
@@ -25,18 +29,19 @@ function App() {
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/catalog" element={<CatalogPage />}  />
 
-      {/* SUPPLIER ROUTES */}
+      {/* --- DROPSHIPPER ROUTES (NEW) --- */}
+      <Route path="/checkout" element={<CheckoutPage />} />
+      <Route path="/dropshipper/wallet" element={<DropshipperWalletPage />} />
       
-      {/* 1. The List View (Dashboard) */}
-      <Route path="/supplier/products" element={<SupplierMyProductsPage />} />
+      {/* Both routes point to the Orders list for now to prevent 404s */}
+      <Route path="/dropshipper/orders" element={<DropshipperOrdersPage />} />
+      <Route path="/dropshipper/orders/:id" element={<DropshipperOrdersPage />} />
+      {/* ------------------------------- */}
 
-      {/* 2. Marketplace Operations (Public) */}
+      {/* SUPPLIER ROUTES */}
+      <Route path="/supplier/products" element={<SupplierMyProductsPage />} />
       <Route path="/supplier/products/add" element={<SupplierProductFormPage />} />
       <Route path="/supplier/products/edit/:id" element={<SupplierProductFormPage />} />
-
-      {/* 3. Private Inventory Operations (Private) 
-         [FIX IS HERE] These routes must point to 'SupplierInventoryFormPage', NOT 'SupplierMyProductsPage'
-      */}
       <Route path="/supplier/inventory/add" element={<SupplierInventoryFormPage />} />
       <Route path="/supplier/inventory/edit/:id" element={<SupplierInventoryFormPage />} />
 

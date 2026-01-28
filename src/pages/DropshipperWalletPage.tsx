@@ -1,8 +1,23 @@
 // src/pages/DropshipperWalletPage.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { fetchDropshipperWallet, type WalletResponse } from '../services/walletService';
+import apiClient from '../services/api'; // Direct API usage to ensure type safety
 import axios from 'axios';
+
+// 1. Define the Interface EXACTLY as the Go Backend sends it
+interface WalletTransaction {
+    id: number;
+    userId: number;
+    type: string;
+    amount: number;
+    details: string;
+    createdAt: string; // Go sends 'createdAt', not 'timestamp'
+}
+
+interface WalletResponse {
+    currentBalance: number; // Go sends 'currentBalance'
+    transactions: WalletTransaction[];
+}
 
 function DropshipperWalletPage() {
   const [walletData, setWalletData] = useState<WalletResponse | null>(null);
@@ -22,8 +37,9 @@ function DropshipperWalletPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchDropshipperWallet();
-      setWalletData(data);
+      // Direct call to ensure we get the shape we expect
+      const response = await apiClient.get<WalletResponse>('/dropshipper/wallet');
+      setWalletData(response.data);
     } catch (err) {
       const msg = axios.isAxiosError(err) && err.response?.data?.message
         ? err.response.data.message
@@ -39,8 +55,9 @@ function DropshipperWalletPage() {
   }, [loadWalletData]);
 
   // Helper function to format transaction date
-  const formatDate = (timestamp: string): string => {
-    return new Date(timestamp).toLocaleDateString('en-MY', { 
+  const formatDate = (dateString: string): string => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-MY', { 
       year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
     });
   };
@@ -54,8 +71,8 @@ function DropshipperWalletPage() {
   
   // --- Rendering Logic ---
 
-  if (loading) return <h1 className="text-xl font-bold">Loading Wallet Dashboard...</h1>;
-  if (error) return <h1 className="text-xl text-red-600">{error}</h1>;
+  if (loading) return <h1 className="text-xl font-bold p-6">Loading Wallet Dashboard...</h1>;
+  if (error) return <h1 className="text-xl text-red-600 p-6">{error}</h1>;
   if (!walletData) return null;
 
   return (
@@ -65,16 +82,16 @@ function DropshipperWalletPage() {
       {/* Balance Summary Card */}
       <div className="bg-blue-600 text-white p-8 rounded-xl shadow-lg mb-8">
         <p className="text-sm opacity-80">Current Available Balance</p>
+        {/* FIX: Use correct camelCase property name */}
         <h2 className="text-5xl font-extrabold mt-1">
-          RM {walletData.current_balance.toFixed(2)}
+          RM {walletData.currentBalance?.toFixed(2) || '0.00'}
         </h2>
-        <div className="flex justify-between mt-4 border-t border-blue-400 pt-3">
-            <p className="text-sm opacity-80">Total Credits Earned:</p>
-            <p className="text-lg font-medium">RM {walletData.total_credits_earned.toFixed(2)}</p>
-        </div>
+        
+        {/* REMOVED: "Total Credits Earned" because backend doesn't send it yet */}
+        
         <div className="mt-6">
             <button className="bg-yellow-400 text-blue-900 font-bold py-2 px-4 rounded-lg hover:bg-yellow-500 transition duration-200">
-                Top Up Wallet (Placeholder)
+                + Top Up Wallet (Placeholder)
             </button>
         </div>
       </div>
@@ -82,8 +99,10 @@ function DropshipperWalletPage() {
       {/* Transaction History */}
       <h2 className="text-2xl font-semibold mb-4">Transaction History</h2>
       
-      {walletData.transactions.length === 0 ? (
-        <p className="text-gray-600">No transactions recorded yet.</p>
+      {(!walletData.transactions || walletData.transactions.length === 0) ? (
+        <div className="bg-gray-50 p-6 rounded-lg text-center border border-dashed border-gray-300">
+            <p className="text-gray-500">No transactions recorded yet.</p>
+        </div>
       ) : (
         <div className="overflow-x-auto bg-white rounded-lg shadow-md">
           <table className="min-w-full divide-y divide-gray-200">
@@ -98,11 +117,12 @@ function DropshipperWalletPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {walletData.transactions.map((tx) => (
                 <tr key={tx.id}>
+                  {/* FIX: Use 'createdAt' instead of 'timestamp' */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatDate(tx.timestamp)}
+                    {formatDate(tx.createdAt)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
-                    {tx.type.replace(/_/g, ' ')}
+                    {tx.type ? tx.type.replace(/_/g, ' ') : 'Unknown'}
                   </td>
                   <td className="px-6 py-4 whitespace-wrap text-sm text-gray-700">
                     {tx.details}
