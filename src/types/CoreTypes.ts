@@ -168,14 +168,18 @@ export interface Setting {
     value: string;
 }
 
+export interface SettingItem {
+    key: string;
+    value: string;
+    description?: string;
+}
+
 /**
  * Interface for the response from GET /v1/manager/settings.
  * The Go endpoint returns settings as an object map keyed by setting name.
  */
 export interface GetSettingsResponse {
-    settings: {
-        [key: string]: string; // Key is setting name (e.g., 'supplier_registration_key'), value is a string.
-    };
+    settings: Record<string, SettingItem>; 
 }
 
 /**
@@ -188,6 +192,10 @@ export interface UpdateSettingsPayload {
     default_commission_rate?: string;
     maintenance_mode?: 'true' | 'false'; // Key field for Phase 6.8 backend patch
     // Add other dynamic settings here as they are introduced
+
+    // --- ADD THESE NEW FIELDS ---
+    ai_model?: string;
+    ai_price_per_1k_tokens?: string;
 }
 
 // ... existing code ...

@@ -146,16 +146,14 @@ export const getGlobalSettings = async (): Promise<GetSettingsResponse> => {
 };
 
 export const updateGlobalSettings = async (payload: UpdateSettingsPayload): Promise<string> => {
-    try {
-        const response = await api.patch<{ message: string }>(
-            ManagerEndpoints.Settings,
-            payload
-        );
-        return response.data.message;
-    } catch (err) {
-        console.error('Error updating global settings:', err);
-        throw err;
-    }
+    // 1. Create the wrapper object the backend demands
+    const wrappedPayload = { settings: payload };
+    
+    // 2. Send the wrapped object
+    // Note: We use the direct URL string '/manager/settings' to be safe and consistent
+    const response = await api.patch<{ message: string }>('/manager/settings', wrappedPayload);
+    
+    return response.data.message;
 };
 
 /**

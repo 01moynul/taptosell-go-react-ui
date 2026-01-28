@@ -1,22 +1,32 @@
 // src/components/manager/GlobalSettingsPage.tsx
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../../hooks/useAuth'; // To get the user role for Maintenance Mode visibility
+import { useAuth } from '../../hooks/useAuth';
 import type { GetSettingsResponse, UpdateSettingsPayload } from '../../types/CoreTypes';
 import { getGlobalSettings, updateGlobalSettings } from '../../services/managerService';
 
 const GlobalSettingsPage: React.FC = () => {
-    const { user } = useAuth(); // Assuming useAuth provides the user object including role
-    //const [settings, setSettings] = useState<GetSettingsResponse['settings']>({});
+    const { user } = useAuth();
+    
+    // UI State
     const [loading, setLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Form state initialized from fetched settings (or defaults)
+    // --- Form State ---
+    
+    // 1. General Settings
     const [commissionRate, setCommissionRate] = useState('');
     const [regKey, setRegKey] = useState('');
+    
+    // 2. Super Admin Settings (Maintenance & AI)
     const [maintenanceMode, setMaintenanceMode] = useState(false);
+    const [aiModel, setAiModel] = useState('gemini-pro');
+    const [aiPrice, setAiPrice] = useState('0.00'); // Selling price per 1k tokens
 
+    // Constants for Profit Calculation (Visual only)
+    const GOOGLE_BASE_COST = 0.0005; // Example: $0.50 per 1M tokens (approx RM 0.002) - Adjust as needed
+    
     /**
      * Fetches the current platform settings.
      */
@@ -24,13 +34,16 @@ const GlobalSettingsPage: React.FC = () => {
         setLoading(true);
         setError(null);
         try {
-            // Explicitly assert the type of the response from the API call
-            const { settings: fetchedSettings }: GetSettingsResponse = await getGlobalSettings();
+            const { settings }: GetSettingsResponse = await getGlobalSettings();
             
-            // Initialize form state from fetched data
-            setCommissionRate(fetchedSettings['default_commission_rate'] || '5');
-            setRegKey(fetchedSettings['supplier_registration_key'] || 'GENERATED-KEY');
-            setMaintenanceMode(fetchedSettings['maintenance_mode'] === 'true');
+            // General
+            setCommissionRate(settings['default_commission_rate']?.value || '5');
+            setRegKey(settings['supplier_registration_key']?.value || 'GENERATED-KEY');
+            
+            // Admin Only
+            setMaintenanceMode(settings['maintenance_mode']?.value === 'true');
+            setAiModel(settings['ai_model']?.value || 'gemini-pro');
+            setAiPrice(settings['ai_price_per_1k_tokens']?.value || '0.02');
 
         } catch (err) {
             console.error('Error fetching settings:', err);
@@ -45,13 +58,12 @@ const GlobalSettingsPage: React.FC = () => {
     }, [fetchSettings]);
 
     /**
-     * Handles the form submission for general settings.
+     * Handles saving ALL settings (General + AI).
      */
-    const handleSubmitGeneral = async (e: React.FormEvent) => {
+    const handleSaveAll = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        // Basic validation
-        if (isNaN(parseFloat(commissionRate)) || parseFloat(commissionRate) <= 0) {
+        if (isNaN(parseFloat(commissionRate)) || parseFloat(commissionRate) < 0) {
             alert('Commission rate must be a positive number.');
             return;
         }
@@ -59,162 +71,197 @@ const GlobalSettingsPage: React.FC = () => {
         setIsSubmitting(true);
         setError(null);
 
+        // Build payload dynamically based on role
         const payload: UpdateSettingsPayload = {
             default_commission_rate: commissionRate,
-            supplier_registration_key: regKey, // We update the key field, even if it's read-only for regeneration
+            supplier_registration_key: regKey,
         };
+
+        // If Super Admin, include AI settings
+        if (user?.role === 'administrator') {
+            payload.ai_model = aiModel;
+            payload.ai_price_per_1k_tokens = aiPrice;
+        }
 
         try {
             await updateGlobalSettings(payload);
-            alert('General settings updated successfully!');
-            // Re-fetch to confirm and update UI
-            await fetchSettings();
+            alert('Settings updated successfully!');
+            await fetchSettings(); // Refresh
         } catch (err) {
-            console.error('Error updating general settings:', err);
+            console.error('Error updating settings:', err);
             setError('Failed to save settings.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    /**
-     * Handles the Maintenance Mode toggle action (Super Admin only).
+/**
+     * specialized handler for Maintenance Mode (Immediate Action)
      */
     const handleMaintenanceToggle = async (newMode: boolean) => {
         if (!user || user.role !== 'administrator') return;
 
-        if (!window.confirm(`Are you sure you want to ${newMode ? 'ACTIVATE' : 'DEACTIVATE'} maintenance mode?`)) {
+        if (!window.confirm(`DANGER: Are you sure you want to ${newMode ? 'ACTIVATE' : 'DEACTIVATE'} maintenance mode?`)) {
             return;
         }
 
         setIsSubmitting(true);
-        setError(null);
-
-        const payload: UpdateSettingsPayload = {
-            maintenance_mode: newMode ? 'true' : 'false',
-        };
-
         try {
-            await updateGlobalSettings(payload);
-            setMaintenanceMode(newMode); // Optimistic UI update
-            alert(`Maintenance Mode ${newMode ? 'Activated' : 'Deactivated'} successfully.`);
+            await updateGlobalSettings({ maintenance_mode: newMode ? 'true' : 'false' });
+            setMaintenanceMode(newMode);
+            alert(`Maintenance Mode ${newMode ? 'ACTIVATED' : 'DEACTIVATED'}.`);
         } catch (err) {
-            console.error('Error toggling maintenance mode:', err);
-            setError('Failed to toggle maintenance mode.');
+            // FIX: We must use 'err' to satisfy the linter
+            console.error("Maintenance toggle failed:", err);
+            alert('Failed to toggle maintenance mode.');
         } finally {
             setIsSubmitting(false);
         }
-    };
-
-    if (loading) {
-        return <div className="p-4 text-center">Loading platform settings...</div>;
     }
 
-    if (error) {
-        return <div className="p-4 text-red-500 text-center">{error}</div>;
-    }
+    if (loading) return <div className="p-8 text-center text-gray-500">Loading configurations...</div>;
+    if (error) return <div className="p-4 bg-red-50 text-red-600 border border-red-200 rounded">{error}</div>;
 
-    // Determine if the current user is a Super Admin
     const isSuperAdmin = user?.role === 'administrator';
 
     return (
-        <div className="p-4 max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold mb-6">Global Platform Settings</h2>
-            
-            {/* 1. Maintenance Mode (Super Admin Only) */}
+        <div className="p-4 max-w-4xl mx-auto space-y-8">
+            <div className="flex justify-between items-center border-b pb-4">
+                <h2 className="text-2xl font-bold text-gray-800">Platform Configuration</h2>
+                {isSuperAdmin && <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-bold uppercase">Super Admin Access</span>}
+            </div>
+
+            {/* --- SECTION 1: DANGER ZONE (Maintenance) --- */}
             {isSuperAdmin && (
-                <section className="mb-8 p-6 bg-red-50 border border-red-300 rounded-lg shadow-md">
-                    <h3 className="text-xl font-semibold mb-3 text-red-800 flex items-center">
-                        <span className="mr-2">🚧</span> Maintenance Mode Control
-                    </h3>
-                    <p className="mb-4 text-sm text-red-700">
-                        When **ACTIVE**, all user-facing pages (Dropshipper/Supplier/Public Catalog) will be inaccessible. Only Admin/Manager routes will remain open.
-                    </p>
-                    <div className="flex items-center justify-between">
-                        <span className={`text-lg font-bold ${maintenanceMode ? 'text-red-700' : 'text-green-700'}`}>
-                            Status: {maintenanceMode ? 'ACTIVE' : 'INACTIVE'}
-                        </span>
+                <section className={`p-6 rounded-lg border-2 ${maintenanceMode ? 'bg-red-50 border-red-500' : 'bg-white border-gray-200'}`}>
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h3 className={`text-lg font-bold flex items-center gap-2 ${maintenanceMode ? 'text-red-700' : 'text-gray-800'}`}>
+                                🚧 Maintenance Protocol
+                                {maintenanceMode && <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">ACTIVE</span>}
+                            </h3>
+                            <p className="text-sm text-gray-600 mt-1 max-w-xl">
+                                When active, all Suppliers and Dropshippers will be locked out of the dashboard. Use this only during critical updates.
+                            </p>
+                        </div>
                         <button
-                            type="button"
                             onClick={() => handleMaintenanceToggle(!maintenanceMode)}
                             disabled={isSubmitting}
-                            className={`px-6 py-2 text-white font-medium rounded-md transition disabled:opacity-50 
-                                ${maintenanceMode ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+                            className={`px-4 py-2 rounded font-bold text-white transition ${
+                                maintenanceMode 
+                                ? 'bg-gray-600 hover:bg-gray-700' 
+                                : 'bg-red-600 hover:bg-red-700'
+                            }`}
                         >
-                            {isSubmitting ? 'Updating...' : maintenanceMode ? 'Deactivate Mode' : 'Activate Mode'}
+                            {maintenanceMode ? 'Deactivate Maintenance' : 'Activate Maintenance'}
                         </button>
                     </div>
                 </section>
             )}
 
-            {/* 2. General Settings Form (Manager/Admin) */}
-            <form onSubmit={handleSubmitGeneral} className="space-y-6 p-6 border rounded-lg bg-white shadow-md">
-                <h3 className="text-xl font-semibold mb-4 text-gray-800">General Platform Configuration</h3>
+            <form onSubmit={handleSaveAll} className="space-y-8">
+                
+                {/* --- SECTION 2: AI PROFIT ENGINE (Super Admin Only) --- */}
+                {isSuperAdmin && (
+                    <section className="bg-white p-6 rounded-lg shadow-sm border border-purple-100">
+                        <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
+                            🤖 AI Profit Engine
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">AI Model</label>
+                                <select
+                                    value={aiModel}
+                                    onChange={e => setAiModel(e.target.value)}
+                                    className="mt-1 block w-full p-2 border border-gray-300 rounded focus:ring-purple-500 focus:border-purple-500"
+                                >
+                                    <option value="gemini-pro">Gemini Pro (Standard)</option>
+                                    <option value="gemini-ultra">Gemini Ultra (High Cost)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Selling Price (Per 1k Tokens)</label>
+                                <div className="relative mt-1 rounded-md shadow-sm">
+                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                        <span className="text-gray-500 sm:text-sm">RM</span>
+                                    </div>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        value={aiPrice}
+                                        onChange={e => setAiPrice(e.target.value)}
+                                        className="block w-full rounded-md border-gray-300 pl-10 p-2 focus:border-purple-500 focus:ring-purple-500"
+                                    />
+                                </div>
+                                {/* Simple Profit Calculator Visual */}
+                                <p className="mt-2 text-xs text-gray-500">
+                                    Est. Margin: <span className="font-bold text-green-600">
+                                        {((parseFloat(aiPrice || '0') - GOOGLE_BASE_COST) / parseFloat(aiPrice || '1') * 100).toFixed(1)}%
+                                    </span> (Based on base cost ~RM {GOOGLE_BASE_COST})
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+                )}
 
-                {/* Platform Commission Rate */}
-                <div>
-                    <label htmlFor="commission" className="block text-sm font-medium text-gray-700">
-                        Default Platform Commission Rate (%)
-                    </label>
-                    <input
-                        type="number"
-                        id="commission"
-                        value={commissionRate}
-                        onChange={(e) => setCommissionRate(e.target.value)}
-                        required
-                        min="0"
-                        step="0.01"
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                        disabled={isSubmitting}
-                    />
-                    <p className="mt-2 text-xs text-gray-500">
-                        This rate is applied by default to all new supplier products.
-                    </p>
-                </div>
+                {/* --- SECTION 3: GENERAL BUSINESS LOGIC --- */}
+                <section className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4">Business Configuration</h3>
+                    
+                    <div className="space-y-6">
+                        {/* Commission */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Default Commission Rate (%)</label>
+                            <div className="mt-1 relative rounded-md shadow-sm max-w-xs">
+                                <input
+                                    type="number"
+                                    value={commissionRate}
+                                    onChange={e => setCommissionRate(e.target.value)}
+                                    className="block w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="5.00"
+                                />
+                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                    <span className="text-gray-500 sm:text-sm">%</span>
+                                </div>
+                            </div>
+                        </div>
 
-                {/* Supplier Registration Key */}
-                <div>
-                    <label htmlFor="regKey" className="block text-sm font-medium text-gray-700">
-                        Supplier Registration Key
-                    </label>
-                    <input
-                        type="text"
-                        id="regKey"
-                        value={regKey}
-                        readOnly
-                        className="mt-1 block w-full border border-gray-300 bg-gray-100 rounded-md shadow-sm p-2 cursor-not-allowed"
-                        disabled={isSubmitting}
-                    />
-                    <div className="mt-2 flex justify-between items-center">
-                        <p className="text-xs text-gray-500">
-                            This key is required for new suppliers to access the registration form.
-                        </p>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                // In a real app, this would be an API call to a specific /regenerate-key endpoint
-                                const newKey = 'TTS-' + Math.random().toString(36).substring(2, 10).toUpperCase();
-                                setRegKey(newKey);
-                                // The new key will be submitted and saved when the main form is saved.
-                                alert('New key generated locally. Click "Save Settings" to apply it.');
-                            }}
-                            className="text-xs bg-indigo-500 hover:bg-indigo-600 text-white py-1 px-3 rounded-md disabled:opacity-50"
-                            disabled={isSubmitting}
-                        >
-                            Regenerate Key
-                        </button>
+                        {/* Reg Key */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Supplier Registration Key</label>
+                            <div className="mt-1 flex gap-2">
+                                <input
+                                    type="text"
+                                    readOnly
+                                    value={regKey}
+                                    className="block w-full p-2 bg-gray-100 border border-gray-300 rounded text-gray-600 font-mono"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const newKey = 'TTS-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+                                        setRegKey(newKey);
+                                    }}
+                                    className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                >
+                                    Regenerate
+                                </button>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500">Share this key with new Suppliers to allow them to register.</p>
+                        </div>
                     </div>
-                </div>
+                </section>
 
-                <div className="pt-4 border-t">
+                <div className="flex justify-end pt-4">
                     <button
                         type="submit"
-                        className="w-full px-4 py-2 text-white font-semibold bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
                         disabled={isSubmitting}
+                        className="bg-blue-600 text-white px-8 py-3 rounded shadow hover:bg-blue-700 disabled:opacity-50 font-bold text-lg"
                     >
-                        {isSubmitting ? 'Saving...' : 'Save General Settings'}
+                        {isSubmitting ? 'Saving...' : 'Save All Changes'}
                     </button>
                 </div>
+
             </form>
         </div>
     );
