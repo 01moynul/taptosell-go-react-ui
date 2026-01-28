@@ -9,44 +9,52 @@ import type {
     CreateBrandPayload
 } from '../types/CoreTypes';
 
+// --- CATEGORIES ---
+
 /**
- * @description Calls the GET /v1/categories endpoint to retrieve the list of all public product categories.
- * @returns {Promise<Category[]>} - A list of categories.
+ * @description Calls the GET /v1/categories endpoint (Public).
  */
 export const fetchCategories = async (): Promise<Category[]> => {
-    // API returns { categories: [...] }
     const response = await apiClient.get<GetCategoriesResponse>('/categories');
-    return response.data.categories;
+    return response.data.categories || [];
 };
 
 /**
- * @description Calls the POST /v1/categories endpoint to create a new category.
- * @param {CreateCategoryPayload} payload - The name and optional parentId.
- * @returns {Promise<Category>} - The created category object.
+ * @description Calls the POST /v1/manager/categories endpoint (Manager Only).
  */
 export const createCategory = async (payload: CreateCategoryPayload): Promise<Category> => {
-    // API returns { message: "...", category: { ... } }
-    const response = await apiClient.post<{ category: Category }>('/categories', payload);
+    const response = await apiClient.post<{ category: Category }>('/manager/categories', payload);
     return response.data.category;
 };
 
 /**
- * @description Calls the GET /v1/brands endpoint to retrieve the list of all public product brands.
- * @returns {Promise<Brand[]>} - A list of brands.
+ * @description Calls the DELETE /v1/manager/categories/:id endpoint (Manager Only).
+ */
+export const deleteCategory = async (id: number): Promise<void> => {
+    await apiClient.delete(`/manager/categories/${id}`);
+};
+
+// --- BRANDS ---
+
+/**
+ * @description Calls the GET /v1/brands endpoint (Public).
  */
 export const fetchBrands = async (): Promise<Brand[]> => {
-    // API returns { brands: [...] }
     const response = await apiClient.get<GetBrandsResponse>('/brands');
-    return response.data.brands;
+    return response.data.brands || [];
 };
 
 /**
- * @description Calls the POST /v1/brands endpoint to create a new brand.
- * @param {CreateBrandPayload} payload - The name of the brand.
- * @returns {Promise<Brand>} - The created brand object.
+ * @description Calls the POST /v1/manager/brands endpoint (Manager Only).
  */
 export const createBrand = async (payload: CreateBrandPayload): Promise<Brand> => {
-    // API returns { message: "...", brand: { ... } }
-    const response = await apiClient.post<{ brand: Brand }>('/brands', payload);
+    const response = await apiClient.post<{ brand: Brand }>('/manager/brands', payload);
     return response.data.brand;
+};
+
+/**
+ * @description Calls the DELETE /v1/manager/brands/:id endpoint (Manager Only).
+ */
+export const deleteBrand = async (id: number): Promise<void> => {
+    await apiClient.delete(`/manager/brands/${id}`);
 };

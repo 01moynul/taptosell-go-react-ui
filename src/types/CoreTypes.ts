@@ -200,7 +200,10 @@ export interface UpdateSettingsPayload {
 export interface Category {
     id: number;
     name: string;
-    parentId?: number; // Optional/Nullable. ID of the parent category.
+    slug: string;
+    parentId?: number | null;
+    // Recursive field for the Tree View
+    children?: Category[]; 
 }
 
 /**
@@ -216,7 +219,7 @@ export interface GetCategoriesResponse {
  */
 export interface CreateCategoryPayload {
     name: string;
-    parentId?: number; // Optional. 0 or null if it's a root category.
+    parentId?: number | null;
 }
 
 /**
@@ -227,7 +230,7 @@ export interface CreateCategoryPayload {
 export interface Brand {
     id: number;
     name: string;
-    // Add 'icon' or 'logo' fields here if the backend supports them in the future.
+    slug: string;
 }
 
 /**
