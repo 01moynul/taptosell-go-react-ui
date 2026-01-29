@@ -8,9 +8,9 @@ import { addToCart } from '../services/cartService';
 interface Product {
   id: number;
   name: string;
-  price: number;
-  tts_price: number;
-  stock: number;
+  price: number;     // Matches `json:"price"` in Go
+  srp: number;       // Matches `json:"srp"` in Go
+  stock: number;     // Matches `json:"stock"` in Go
 }
 
 function CatalogPage() {
@@ -86,7 +86,7 @@ function CatalogPage() {
                     <h3 className="text-xl font-semibold text-gray-800 mb-2">{product.name}</h3>
                     <div className="flex justify-between items-center mb-4">
                         <span className="text-gray-500 text-sm">Dropshipper Cost:</span>
-                        <span className="text-indigo-600 font-bold text-lg">RM {product.tts_price.toFixed(2)}</span>
+                        <span className="text-indigo-600 font-bold text-lg"> RM {(product.price || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center mb-4">
                         <span className="text-gray-500 text-sm">Stock:</span>

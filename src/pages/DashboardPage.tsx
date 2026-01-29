@@ -37,6 +37,7 @@ interface TrendingProduct {
     images: string[] | null;
 }
 
+
 // Helper Interface to fix "unknown" user type issues
 interface UserWithProfile {
     full_name?: string;
@@ -232,7 +233,28 @@ function DashboardPage() {
                         <div className="h-64 bg-gray-200 rounded-lg"></div>
                     </div>
                 ) : (
+                    
                     <>
+
+                        {/* 1. Add this Navigation Bar at the top of the Dropshipper view */}
+                        <nav className="flex gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-6">
+                            <Link to="/catalog" className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
+                                🛍️ Browse Catalog
+                            </Link>
+                            <Link to="/cart" className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 font-medium">
+                                🛒 View Cart
+                            </Link>
+                            <Link to="/dropshipper/orders" className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 font-medium">
+                                📦 My Orders
+                            </Link>
+                            <button 
+                                onClick={() => { /* Add your logout logic here from AuthContext */ }}
+                                className="ml-auto px-4 py-2 text-red-600 hover:bg-red-50 rounded font-medium"
+                            >
+                                Logout
+                            </button>
+                        </nav>
+
                         {/* 1. KPI Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -359,7 +381,7 @@ function DashboardPage() {
                                                 {product.name}
                                             </h3>
                                             <p className="text-indigo-600 font-bold mt-1">
-                                                RM {product.tts_price.toFixed(2)}
+                                                RM {(product.price || 0).toFixed(2)}
                                             </p>
                                         </Link>
                                     ))}

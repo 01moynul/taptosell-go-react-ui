@@ -7,7 +7,8 @@ import VerifyEmailPage from './pages/VerifyEmailPage';
 import DashboardPage from './pages/DashboardPage';
 import CatalogPage from './pages/CatalogPage';
 
-// --- Dropshipper Imports (NEW) ---
+// --- Dropshipper Imports ---
+import CartPage from './pages/CartPage'; // NEW IMPORT
 import CheckoutPage from './pages/CheckoutPage';
 import DropshipperWalletPage from './pages/DropshipperWalletPage';
 import DropshipperOrdersPage from './pages/DropshipperOrdersPage';
@@ -29,7 +30,8 @@ function App() {
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/catalog" element={<CatalogPage />}  />
 
-      {/* --- DROPSHIPPER ROUTES (NEW) --- */}
+      {/* --- DROPSHIPPER ROUTES --- */}
+      <Route path="/cart" element={<CartPage />} /> {/* REGISTERED ROUTE */}
       <Route path="/checkout" element={<CheckoutPage />} />
       <Route path="/dropshipper/wallet" element={<DropshipperWalletPage />} />
       

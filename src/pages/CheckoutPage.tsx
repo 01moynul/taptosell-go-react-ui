@@ -1,12 +1,28 @@
 // src/pages/CheckoutPage.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { fetchCart, processCheckout, type CartResponse } from '../services/cartService';
+import { fetchCart, processCheckout } from '../services/cartService';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
+// ✅ FIX: Define local interfaces that match the actual Go Backend JSON
+interface LocalCartItem {
+  product_id: number;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  lineTotal: number; // Synchronized with Backend CartItemResponse
+}
+
+interface LocalCartResponse {
+  items: LocalCartItem[];
+  total_items: number;
+  subtotal: number;
+  grand_total: number;
+}
+
 function CheckoutPage() {
-  const [cart, setCart] = useState<CartResponse | null>(null);
+  const [cart, setCart] = useState<LocalCartResponse | null>(null);
   const [shippingAddress, setShippingAddress] = useState('');
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -14,10 +30,8 @@ function CheckoutPage() {
   
   const auth = useAuth();
   const navigate = useNavigate();
-
   const isDropshipper = auth.user?.role === 'dropshipper';
 
-  // 1. Fetch Cart Data
   const loadCart = useCallback(async () => {
     if (!auth.token || !isDropshipper) {
       setError('You must be a logged-in Dropshipper to checkout.');
@@ -28,14 +42,17 @@ function CheckoutPage() {
     setLoading(true);
     try {
       const data = await fetchCart();
+      // Cast the service response to our local trusted interface
+      const trustedData = data as unknown as LocalCartResponse;
       
-      // If cart is empty, redirect user back to catalog
-      if (data.items.length === 0) {
+      if (trustedData.items.length === 0) {
         navigate('/catalog', { state: { message: 'Cannot checkout with an empty cart.' } });
         return;
       }
-      setCart(data);
+      setCart(trustedData);
     } catch (err) {
+      // ✅ Standard Fix: Log the error for developer debugging
+      console.error("Failed to load checkout cart:", err);
       const msg = axios.isAxiosError(err) && err.response?.data?.message
         ? err.response.data.message
         : 'Failed to load cart for checkout.';
@@ -49,7 +66,6 @@ function CheckoutPage() {
     loadCart();
   }, [loadCart]);
   
-  // 2. Process Checkout
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -63,44 +79,39 @@ function CheckoutPage() {
     try {
       const response = await processCheckout(shippingAddress.trim());
 
-      // Success logic: Navigate based on order status
       if (response.status === 'processing') {
-        // Payment successful (wallet balance was sufficient)
-        navigate(`/orders/${response.order_id}/success`, { state: { message: 'Your order was placed successfully!' } });
+        navigate(`/dropshipper/orders`, { state: { message: 'Your order was placed successfully!' } });
       } else if (response.status === 'on-hold') {
-        // Payment pending (wallet balance was insufficient)
-        navigate(`/orders/${response.order_id}/on-hold`, { state: { message: 'Order placed, but payment is on-hold due to insufficient wallet balance.', onHold: true } });
+        navigate(`/dropshipper/orders`, { state: { message: 'Order placed, but payment is on-hold.', onHold: true } });
       }
 
     } catch (err) {
+      // ✅ Standard Fix: Log the error for developer debugging
+      console.error("Checkout submission failed:", err);
       const msg = axios.isAxiosError(err) && err.response?.data?.message
-        ? err.response.data.message
-        : 'Checkout failed. Please check your wallet balance and try again.';
+          ? err.response.data.message
+          : 'Checkout failed. Please check your wallet balance.';
       setError(`Error: ${msg}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
-
-  // --- Rendering Logic ---
-
-  if (loading) return <h1 className="text-xl font-bold">Loading Checkout Summary...</h1>;
-  if (error && !cart) return <h1 className="text-xl text-red-600">{error}</h1>;
-  if (!cart) return null; // Should be handled by loading or error states
+  if (loading) return <div className="p-8 text-center font-bold">Loading Checkout Summary...</div>;
+  if (error && !cart) return <div className="p-8 text-center text-red-600 font-bold">{error}</div>;
+  if (!cart) return null;
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container mx-auto p-4 max-w-6xl">
       <h1 className="text-3xl font-bold mb-6">Checkout</h1>
 
       <form onSubmit={handleCheckout} className="flex flex-col lg:flex-row gap-8">
-        {/* Shipping & Payment (Left Side) */}
-        <div className="lg:w-2/3 bg-white p-6 rounded-lg shadow-md space-y-6">
+        <div className="lg:w-2/3 bg-white p-6 rounded-lg shadow-sm border border-gray-200 space-y-6">
           <h2 className="text-2xl font-semibold border-b pb-2">Delivery Details</h2>
           
-          {error && <p className="text-red-600 font-medium bg-red-100 p-3 rounded">{error}</p>}
+          {error && <div className="p-4 bg-red-50 text-red-700 rounded-md border border-red-200 font-medium">{error}</div>}
           
-          <div className="space-y-4">
+          <div className="space-y-2">
             <label htmlFor="shippingAddress" className="block text-sm font-medium text-gray-700">Shipping Address</label>
             <textarea
               id="shippingAddress"
@@ -108,58 +119,46 @@ function CheckoutPage() {
               onChange={(e) => setShippingAddress(e.target.value)}
               rows={4}
               required
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-3 focus:ring-green-500 focus:border-green-500"
-              placeholder="Enter full shipping address here..."
+              className="w-full border border-gray-300 rounded-md shadow-sm p-3 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="Enter full shipping address..."
               disabled={isProcessing}
             />
           </div>
 
-          <h2 className="text-2xl font-semibold border-b pb-2 pt-4">Payment Method (Wallet)</h2>
-          <p className="text-gray-600">
-            Payment will be deducted automatically from your Dropshipper Wallet. If funds are insufficient, your order will be placed on **Hold**.
+          <h2 className="text-2xl font-semibold border-b pb-2 pt-4">Payment Method</h2>
+          <p className="text-gray-600 bg-blue-50 p-4 rounded-md border border-blue-100">
+             Deducted from **Dropshipper Wallet**. Current Total: **RM {(cart.grand_total || 0).toFixed(2)}**
           </p>
         </div>
 
-        {/* Order Summary (Right Side) */}
         <div className="lg:w-1/3">
-          <div className="bg-gray-50 p-6 rounded-lg shadow-lg sticky top-4">
-            <h2 className="text-xl font-bold mb-4 border-b pb-2">Order Summary ({cart.total_items} Items)</h2>
+          <div className="bg-gray-50 p-6 rounded-lg shadow border border-gray-200 sticky top-4">
+            <h2 className="text-xl font-bold mb-4 border-b pb-2">Order Summary</h2>
             
-            {/* Item List Summary */}
-            <div className="max-h-60 overflow-y-auto mb-4 border-b pb-4 space-y-2">
-                {cart.items.map(item => (
-                    <div key={item.product_id} className="flex justify-between text-sm text-gray-700">
-                        <span className="truncate pr-2">{item.product_name} x {item.quantity}</span>
-                        <span>RM {item.subtotal.toFixed(2)}</span>
-                    </div>
-                ))}
-            </div>
-
-            {/* Totals */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-lg font-semibold border-t pt-2">
-                <span>Total Cost:</span>
-                <span>RM {cart.subtotal.toFixed(2)}</span>
-              </div>
-            </div>
-            
-            <div className="text-2xl font-extrabold text-green-600 mt-4 pt-4 border-t-2 border-green-200">
-                <div className="flex justify-between">
-                    <span>Grand Total:</span>
-                    <span>RM {cart.grand_total.toFixed(2)}</span>
+            <div className="max-h-60 overflow-y-auto mb-4 border-b pb-4 space-y-3">
+                {cart.items.map((item) => (
+                // ✅ FIX: Added unique 'key' prop using item.product_id
+                <div key={item.product_id} className="flex justify-between text-sm text-gray-700">
+                    <span className="truncate pr-4 flex-1">{item.product_name} x {item.quantity}</span>
+                    <span className="font-medium whitespace-nowrap">RM {(item.lineTotal || 0).toFixed(2)}</span>
                 </div>
+              ))}
             </div>
 
-            <button 
-              type="submit"
-              className="w-full mt-6 bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 font-semibold transition duration-200 disabled:bg-blue-400"
-              disabled={isProcessing || cart.grand_total === 0}
-            >
-              {isProcessing ? 'Processing Order...' : `Place Order (RM ${cart.grand_total.toFixed(2)})`}
-            </button>
-            <p className="text-center text-sm text-gray-500 mt-2">
-                You will be charged RM {cart.grand_total.toFixed(2)} from your wallet.
-            </p>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center text-xl font-extrabold text-green-600">
+                  <span>Grand Total:</span>
+                  <span>RM {(cart.grand_total || 0).toFixed(2)}</span>
+              </div>
+
+              <button 
+                type="submit"
+                disabled={isProcessing || cart.total_items === 0}
+                className="w-full bg-indigo-600 text-white py-3 rounded-md hover:bg-indigo-700 font-bold shadow transition-transform active:scale-95 disabled:opacity-50"
+              >
+                {isProcessing ? 'Processing Order...' : `Place Order Now`}
+              </button>
+            </div>
           </div>
         </div>
       </form>

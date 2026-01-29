@@ -1,9 +1,20 @@
 // src/pages/CartPage.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { fetchCart, updateCartItem, removeFromCart, type CartResponse, type CartItem } from '../services/cartService';
+import { fetchCart, updateCartItem, removeFromCart } from '../services/cartService';
+import type { CartResponse } from '../services/cartService'; // ✅ Standard Fix: Type-only import
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+
+// --- ✅ Standard Fix: Define Interface to replace forbidden 'any' ---
+interface CartItem {
+  productId: number;
+  name: string;
+  price: number;
+  quantity: number;
+  lineTotal: number;
+  stock: number;
+}
 
 function CartPage() {
   const [cart, setCart] = useState<CartResponse | null>(null);
@@ -14,7 +25,6 @@ function CartPage() {
   
   const isDropshipper = auth.user?.role === 'dropshipper';
 
-  // Function to load the cart data
   const loadCart = useCallback(async () => {
     if (!auth.token || !isDropshipper) {
       setError('You must be a logged-in Dropshipper to view the cart.');
@@ -28,171 +38,116 @@ function CartPage() {
       const data = await fetchCart();
       setCart(data);
     } catch (err) {
+      // ✅ FIX: Use 'axios' to safely parse the error (satisfies the linter)
+      console.error("Failed to load cart:", err);
+
       const msg = axios.isAxiosError(err) && err.response?.data?.message
         ? err.response.data.message
         : 'Failed to load cart. Please try logging in again.';
+        
       setError(`Error: ${msg}`);
     } finally {
       setLoading(false);
     }
-  }, [auth.token, isDropshipper]); // Re-run if token or role changes
+  }, [auth.token, isDropshipper]);
 
   useEffect(() => {
     loadCart();
   }, [loadCart]);
 
-  // Handler for quantity change
   const handleUpdateQuantity = async (item: CartItem, newQuantity: number) => {
     if (newQuantity < 1 || isUpdating) return;
-    
     setIsUpdating(true);
     try {
-      // 1. Call the API to update the quantity
-      await updateCartItem(item.product_id, newQuantity);
-      
-      // 2. Reload the entire cart to get the new calculated totals from the backend
+      await updateCartItem(item.productId, newQuantity);
       await loadCart();
-
     } catch (err) {
-      const msg = axios.isAxiosError(err) && err.response?.data?.message
-        ? err.response.data.message
-        : 'Failed to update quantity.';
-      alert(`Update Error: ${msg}`);
+      // ✅ Standard Fix: Log the error for developer debugging
+      console.error("Update quantity failed:", err);
+      alert("Failed to update quantity.");
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // Handler for item removal
   const handleRemoveItem = async (productId: number, productName: string) => {
-    if (!window.confirm(`Are you sure you want to remove "${productName}" from your cart?`)) {
-      return;
-    }
-
+    if (!window.confirm(`Remove "${productName}"?`)) return;
     setIsUpdating(true);
     try {
-      // 1. Call the API to remove the item
       await removeFromCart(productId);
-
-      // 2. Reload the cart
       await loadCart();
-
     } catch (err) {
-      const msg = axios.isAxiosError(err) && err.response?.data?.message
-        ? err.response.data.message
-        : 'Failed to remove item.';
-      alert(`Removal Error: ${msg}`);
+      // ✅ Standard Fix: Log the error for developer debugging
+      console.error("Remove item failed:", err);
+      alert("Failed to remove item.");
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // --- Rendering Logic ---
+  if (loading) return <div className="p-8 text-center font-bold">Loading Cart...</div>;
+  if (error) return <div className="p-8 text-center text-red-600 font-bold">{error}</div>;
+  
+  const items = (cart?.items as unknown as CartItem[]) || [];
 
-  if (loading) return <h1 className="text-xl font-bold">Loading Cart...</h1>;
-  if (error) return <h1 className="text-xl text-red-600">{error}</h1>;
-  if (!cart || cart.items.length === 0) {
+  if (items.length === 0) {
     return (
-      <div className="p-6 bg-white shadow-md rounded-lg">
+      <div className="p-10 text-center bg-white shadow-md rounded-lg max-w-4xl mx-auto mt-10">
         <h1 className="text-2xl font-semibold mb-4">Your Shopping Cart</h1>
-        <p className="text-gray-600">Your cart is currently empty. Start browsing the <Link to="/catalog" className="text-blue-500 hover:underline">Product Catalog</Link> to find items.</p>
+        <p className="text-gray-500 mb-6">Your cart is currently empty.</p>
+        <Link to="/catalog" className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700">
+          Go Shopping
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container mx-auto p-4 max-w-6xl">
       <h1 className="text-3xl font-bold mb-6">Your Shopping Cart</h1>
 
       <div className="flex flex-col lg:flex-row gap-8">
-        {/* Cart Items List */}
-        <div className="lg:w-3/4">
-          <div className="space-y-4">
-            {cart.items.map((item) => (
-              <div key={item.product_id} className="p-4 border rounded-lg flex items-center justify-between shadow-sm bg-white">
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-lg font-semibold">{item.product_name}</h3>
-                  <p className="text-sm text-gray-500">Your Cost: RM {item.unit_price.toFixed(2)}</p>
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  {/* Quantity Control */}
-                  <div className="flex items-center border rounded">
-                    <button 
-                      onClick={() => handleUpdateQuantity(item, item.quantity - 1)}
-                      disabled={isUpdating || item.quantity === 1}
-                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
-                    >
-                      -
-                    </button>
-                    <input 
-                      type="number" 
-                      value={item.quantity}
-                      onChange={(e) => handleUpdateQuantity(item, parseInt(e.target.value) || 1)}
-                      min="1"
-                      className="w-16 text-center border-x outline-none"
-                      disabled={isUpdating}
-                    />
-                    <button 
-                      onClick={() => handleUpdateQuantity(item, item.quantity + 1)}
-                      disabled={isUpdating}
-                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  {/* Subtotal */}
-                  <div className="min-w-[100px] text-right">
-                    <span className="text-lg font-bold">RM {item.subtotal.toFixed(2)}</span>
-                  </div>
-
-                  {/* Remove Button */}
-                  <button 
-                    onClick={() => handleRemoveItem(item.product_id, item.product_name)}
-                    disabled={isUpdating}
-                    className="text-red-500 hover:text-red-700 disabled:opacity-50"
-                    aria-label={`Remove ${item.product_name}`}
-                  >
-                    Remove
-                  </button>
-                </div>
+        <div className="lg:w-3/4 space-y-4">
+          {items.map((item) => (
+            <div key={item.productId} className="p-4 border rounded-lg flex items-center justify-between shadow-sm bg-white">
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold">{item.name}</h3>
+                {/* ✅ FIX: Access 'price' property aligned with Go backend JSON tags */}
+                <p className="text-sm text-gray-500">Unit Cost: RM {(item.price || 0).toFixed(2)}</p>
               </div>
-            ))}
-          </div>
+
+              <div className="flex items-center space-x-6">
+                <div className="flex items-center border rounded overflow-hidden">
+                  <button onClick={() => handleUpdateQuantity(item, item.quantity - 1)} className="px-3 py-1 bg-gray-100 hover:bg-gray-200">-</button>
+                  <span className="px-4 py-1 font-medium">{item.quantity}</span>
+                  <button onClick={() => handleUpdateQuantity(item, item.quantity + 1)} className="px-3 py-1 bg-gray-100 hover:bg-gray-200">+</button>
+                </div>
+
+                <div className="min-w-[100px] text-right">
+                  {/* ✅ FIX: Access 'lineTotal' property aligned with Go backend JSON tags */}
+                  <span className="text-lg font-bold text-indigo-600">RM {(item.lineTotal || 0).toFixed(2)}</span>
+                </div>
+
+                <button onClick={() => handleRemoveItem(item.productId, item.name)} className="text-red-500 hover:text-red-700 font-medium">Remove</button>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Cart Summary */}
         <div className="lg:w-1/4">
-          <div className="bg-gray-50 p-6 rounded-lg shadow-lg sticky top-4">
-            <h2 className="text-xl font-bold mb-4 border-b pb-2">Cart Summary</h2>
-            <div className="space-y-2">
+          <div className="bg-gray-50 p-6 rounded-lg shadow border border-gray-200 sticky top-4">
+            <h2 className="text-xl font-bold mb-4 border-b pb-2">Summary</h2>
+            <div className="space-y-3">
               <div className="flex justify-between">
-                <span>Total Items:</span>
-                <span className="font-medium">{cart.total_items}</span>
+                <span className="text-gray-600">Subtotal:</span>
+                <span className="font-bold text-lg">RM {(cart?.subtotal || 0).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-lg font-semibold border-t pt-2">
-                <span>Subtotal:</span>
-                <span>RM {cart.subtotal.toFixed(2)}</span>
-              </div>
-              {/* Note: Tax/Shipping will be calculated later in Checkout */}
+              <Link to="/checkout" className="block w-full">
+                <button className="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 font-bold shadow-lg">
+                  Proceed to Checkout
+                </button>
+              </Link>
             </div>
-            
-            <div className="text-2xl font-extrabold text-green-600 mt-4 pt-4 border-t-2 border-green-200">
-                <div className="flex justify-between">
-                    <span>Grand Total:</span>
-                    <span>RM {cart.grand_total.toFixed(2)}</span>
-                </div>
-            </div>
-
-            <Link to="/checkout">
-              <button 
-                className="w-full mt-6 bg-green-500 text-white py-3 rounded-md hover:bg-green-600 font-semibold transition duration-200"
-                disabled={isUpdating}
-              >
-                Proceed to Checkout
-              </button>
-            </Link>
           </div>
         </div>
       </div>
