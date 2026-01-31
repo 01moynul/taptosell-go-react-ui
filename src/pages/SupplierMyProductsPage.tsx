@@ -1,19 +1,26 @@
-// src/pages/SupplierMyProductsPage.tsx
-
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import type { SupplierProduct, InventoryItem } from '../services/supplierProductService';
 import { 
   fetchMyProducts, 
   fetchPrivateInventory, 
   deleteProduct, 
   deleteInventoryItem,
-  promoteInventoryItem, // [CRITICAL] Import for the button
-  type SupplierProduct, 
-  type InventoryItem 
+  promoteInventoryItem 
 } from '../services/supplierProductService';
+import { fetchSupplierSales, updateOrderTracking } from '../services/orderService';
 
-// Filter options for Marketplace products
+// [FIX] Strict interface to replace 'any'
+interface SupplierSale {
+  id: number;
+  status: string;
+  total_amount: number; // Matches DropshipperOrder
+  order_date: string;   // Matches DropshipperOrder
+  tracking_number?: string | null; // Allow null to fix the TS(2345) error
+}
+
+// [FIX] Integrated in Marketplace Tab to satisfy linter
 const PRODUCT_STATUSES = [
   { value: '', label: 'All Statuses' },
   { value: 'published', label: 'Live (Published)' },
@@ -25,110 +32,122 @@ const PRODUCT_STATUSES = [
 function SupplierMyProductsPage() {
   const auth = useAuth();
   const isSupplier = auth.user?.role === 'supplier';
-  
-  // Navigation Hooks
   const location = useLocation();
   const navigate = useNavigate();
 
-  // 1. Tab State with URL Persistence
-  // If URL is /supplier/products?view=private, default to 'private'
-  const [activeTab, setActiveTab] = useState<'marketplace' | 'private'>(() => {
+  const [activeTab, setActiveTab] = useState<'marketplace' | 'private' | 'sales'>(() => {
     const params = new URLSearchParams(location.search);
-    return params.get('view') === 'private' ? 'private' : 'marketplace';
+    const view = params.get('view');
+    if (view === 'private') return 'private';
+    if (view === 'sales') return 'sales';
+    return 'marketplace';
   });
 
-  // Helper to switch tabs and update URL
-  const handleTabSwitch = (tab: 'marketplace' | 'private') => {
+  // Data States
+  const [marketProducts, setMarketProducts] = useState<SupplierProduct[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [sales, setSales] = useState<SupplierSale[]>([]); 
+  
+  // UI States
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>(''); // [FIX] Now used in UI
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  
+  const [processingOrderId, setProcessingOrderId] = useState<number | null>(null);
+  const [trackingNumber, setTrackingNumber] = useState<string>('');
+
+  const handleTabSwitch = (tab: 'marketplace' | 'private' | 'sales') => {
     setActiveTab(tab);
     navigate(`?view=${tab}`, { replace: true });
   };
 
-  // State for Data
-  const [marketProducts, setMarketProducts] = useState<SupplierProduct[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   
-  // State for UI
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
-
-  // Unified Loader
   const loadData = useCallback(async () => {
     if (!auth.token || !isSupplier) return;
-    
     setLoading(true);
     setError('');
     try {
       if (activeTab === 'marketplace') {
         const data = await fetchMyProducts(statusFilter);
         setMarketProducts(data);
-      } else {
+      } else if (activeTab === 'private') {
         const data = await fetchPrivateInventory();
         setInventoryItems(data);
+      } else if (activeTab === 'sales') {
+        const data = await fetchSupplierSales();
+        setSales(data);
       }
     } catch (err) {
-      console.error("Failed to load products:", err);
-      setError('Failed to load your products. Please try again.');
+      console.error("Dashboard Load Error:", err);
+      setError('Failed to load dashboard data. Please check your connection.');
     } finally {
       setLoading(false);
     }
   }, [auth.token, isSupplier, activeTab, statusFilter]);
 
-  // Load data when tab or filter changes
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // --- HANDLERS ---
-
   const handleDelete = async (id: number, name: string, isMarketplace: boolean) => {
     if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
-
     try {
-      if (isMarketplace) {
-        await deleteProduct(id);
-      } else {
-        await deleteInventoryItem(id);
-      }
-      loadData(); // Refresh list
-    } catch (err) {
-      alert("Failed to delete item.");
-      console.error(err);
+      if (isMarketplace) await deleteProduct(id);
+      else await deleteInventoryItem(id);
+      loadData();
+    } catch (err) { 
+      console.error("Delete Error:", err);
+      alert("Failed to delete item."); 
     }
   };
 
-  // [FIXED] Promote Handler
   const handlePromote = async (id: number, name: string) => {
-    if (!window.confirm(`Promote "${name}" to the Marketplace?\n\nThis will create a draft/pending product that Managers can review.`)) return;
-
+    if (!window.confirm(`Promote "${name}" to Marketplace?`)) return;
     try {
-        setLoading(true); // Show loading state
+        setLoading(true);
         await promoteInventoryItem(id);
-        alert(`Success! "${name}" has been promoted.`);
-        
-        // Switch to marketplace tab to see the result
+        alert(`Success! "${name}" promoted.`);
         handleTabSwitch('marketplace'); 
     } catch (err) {
-        // Strict Type Check for Error
-        interface ApiError { message?: string; }
+        interface ApiError { response?: { data?: { error?: string } } };
         const apiError = err as ApiError;
-
-        alert("Failed to promote item: " + (apiError.message || "Unknown Error"));
-        setLoading(false); // Only stop loading on error (success triggers tab switch reload)
+        console.error("Promotion Error:", err);
+        alert("Failed: " + (apiError.response?.data?.error || "Unknown Error"));
+        setLoading(false);
     }
   };
 
-  // --- UI HELPERS ---
+const handleShipOrder = async () => {
+    if (!processingOrderId || !trackingNumber) return;
+    try {
+      setLoading(true);
+      // [FIX] Now calling the real backend service
+      await updateOrderTracking(processingOrderId, trackingNumber); 
+      alert(`Order #${processingOrderId} has been shipped!`);
+      setProcessingOrderId(null);
+      setTrackingNumber('');
+      loadData();
+    } catch (err) {
+      console.error("Shipment Error:", err); // Satisfies linter [cite: 1775]
+      alert("Failed to update shipment status.");
+    } finally {
+      setLoading(false);
+    }
+};
 
   const getStatusBadge = (status: string): JSX.Element => {
     const styles: Record<string, string> = {
       published: 'bg-green-100 text-green-800 border-green-200',
+      active: 'bg-green-100 text-green-800 border-green-200',
       pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      processing: 'bg-blue-100 text-blue-800 border-blue-200',
+      shipped: 'bg-purple-100 text-purple-800 border-purple-200',
+      on_hold: 'bg-orange-100 text-orange-800 border-orange-200',
       rejected: 'bg-red-100 text-red-800 border-red-200',
       draft: 'bg-gray-100 text-gray-800 border-gray-200',
     };
-    const className = styles[status] || styles.draft;
-    
+    const key = status.replace(/-/g, '_');
+    const className = styles[key] || styles.draft;
     return (
       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize border ${className}`}>
         {status.replace(/-/g, ' ')}
@@ -136,113 +155,73 @@ function SupplierMyProductsPage() {
     );
   };
 
-  const Thumbnail = ({ src, alt }: { src?: string, alt: string }) => (
-    <div className="h-12 w-12 flex-shrink-0 rounded bg-gray-100 overflow-hidden border border-gray-200">
-      {src ? (
-        <img src={src} alt={alt} className="h-full w-full object-cover" />
-      ) : (
-        <div className="h-full w-full flex items-center justify-center text-gray-400 text-xs">No Img</div>
-      )}
-    </div>
-  );
-
-  if (!isSupplier) return <div className="p-8 text-red-600">Unauthorized access.</div>;
+  if (!isSupplier) return <div className="p-8 text-red-600 font-bold text-center">Unauthorized.</div>;
 
   return (
-    <div className="container mx-auto p-4 max-w-6xl">
-      
-      {/* Header & Tabs */}
+    <div className="container mx-auto p-4 max-w-6xl relative">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Supplier Dashboard</h1>
-          <p className="text-gray-500 text-sm">Manage your public listing and private inventory.</p>
+          <p className="text-gray-500 text-sm">Manage inventory and fulfill marketplace sales.</p>
         </div>
         
         <div className="flex bg-gray-100 p-1 rounded-lg">
-          <button
-            onClick={() => handleTabSwitch('marketplace')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-              activeTab === 'marketplace' 
-                ? 'bg-white text-blue-600 shadow-sm' 
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Marketplace Products
-          </button>
-          <button
-            onClick={() => handleTabSwitch('private')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-              activeTab === 'private' 
-                ? 'bg-white text-blue-600 shadow-sm' 
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Private Inventory
-          </button>
+          <button onClick={() => handleTabSwitch('marketplace')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'marketplace' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>Marketplace</button>
+          <button onClick={() => handleTabSwitch('private')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'private' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>Inventory</button>
+          <button onClick={() => handleTabSwitch('sales')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'sales' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500'}`}>My Sales</button>
         </div>
 
-        <Link to={activeTab === 'marketplace' ? "/supplier/products/add" : "/supplier/inventory/add"}>
-          <button className="w-full md:w-auto bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 font-semibold shadow-sm flex items-center justify-center gap-2">
-            <span className="text-lg font-light">+</span> 
-            {activeTab === 'marketplace' ? 'Add to Marketplace' : 'Add Private Item'}
-          </button>
-        </Link>
+        {activeTab !== 'sales' && (
+          <Link to={activeTab === 'marketplace' ? "/supplier/products/add" : "/supplier/inventory/add"}>
+            <button className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 font-semibold shadow-sm">+ Add Item</button>
+          </Link>
+        )}
       </div>
 
-      {/* Toolbar (Filters) - Only for Marketplace */}
+      {/* [FIX] Error Alert Banner */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 flex justify-between items-center">
+          <p className="text-sm">{error}</p>
+          <button onClick={() => setError('')} className="text-red-500 font-bold">×</button>
+        </div>
+      )}
+
       {activeTab === 'marketplace' && (
-        <div className="flex items-center mb-4">
+        <div className="mb-4">
           <select 
             value={statusFilter} 
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="p-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
+            className="p-2 border border-gray-300 rounded-md text-sm bg-white focus:ring-blue-500"
           >
             {PRODUCT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
       )}
 
-      {/* Content Area */}
-      {loading ? (
-        <div className="py-12 text-center text-gray-500">Loading data...</div>
-      ) : error ? (
-        <div className="bg-red-50 p-4 text-red-700 rounded-md">{error}</div>
-      ) : (
+      {loading ? <div className="py-12 text-center text-gray-400">Loading dashboard...</div> : (
         <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-          
-          {/* VIEW A: MARKETPLACE LIST */}
+          {/* TAB 1: MARKETPLACE */}
           {activeTab === 'marketplace' && (
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200">
                 {marketProducts.length === 0 ? (
-                   <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No marketplace products found.</td></tr>
+                  <tr><td colSpan={4} className="py-10 text-center text-gray-400">No marketplace products.</td></tr>
                 ) : marketProducts.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Thumbnail src={p.images?.[0]} alt={p.name} />
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{p.name}</div>
-                          <div className="text-xs text-gray-500">{p.is_variable ? 'Variable Matrix' : 'Simple Product'}</div>
-                          {p.status === 'rejected' && <div className="text-xs text-red-500 mt-0.5">Reason: {p.reason}</div>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(p.status)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">RM {p.price.toFixed(2)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">{p.stock}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
-                      <Link to={`/supplier/products/edit/${p.id}`} className="text-blue-600 hover:text-blue-900">Edit</Link>
-                      <button onClick={() => handleDelete(p.id, p.name, true)} className="text-red-600 hover:text-red-900">Delete</button>
+                  <tr key={p.id}>
+                    <td className="px-6 py-4 text-sm font-medium">{p.name}</td>
+                    <td className="px-6 py-4">{getStatusBadge(p.status)}</td>
+                    <td className="px-6 py-4 text-right text-sm">RM {p.price.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-right text-sm space-x-3">
+                      <Link to={`/supplier/products/edit/${p.id}`} className="text-blue-600">Edit</Link>
+                      <button onClick={() => handleDelete(p.id, p.name, true)} className="text-red-600">Delete</button>
                     </td>
                   </tr>
                 ))}
@@ -250,47 +229,98 @@ function SupplierMyProductsPage() {
             </table>
           )}
 
-          {/* VIEW B: PRIVATE INVENTORY LIST */}
+          {/* TAB 2: [FIXED] PRIVATE INVENTORY */}
           {activeTab === 'private' && (
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item Name</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Stock</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200">
                 {inventoryItems.length === 0 ? (
-                   <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No private items found.</td></tr>
+                  <tr><td colSpan={4} className="py-10 text-center text-gray-400">No inventory items.</td></tr>
                 ) : inventoryItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.sku || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">RM {item.price.toFixed(2)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">{item.stock}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
-                      
-                      {/* [WIRED UP] The Promote Button */}
-                      <button 
-                          onClick={() => handlePromote(item.id, item.name)}
-                          className="text-green-600 hover:text-green-900 font-semibold" 
-                          title="Promote to Marketplace"
-                      >
-                        Promote ↗
-                      </button>
-
-                      <Link to={`/supplier/inventory/edit/${item.id}`} className="text-blue-600 hover:text-blue-900">Edit</Link>
-                      <button onClick={() => handleDelete(item.id, item.name, false)} className="text-red-600 hover:text-red-900">Delete</button>
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm font-medium">{item.name}</td>
+                    <td className="px-6 py-4 text-sm">{item.sku || '-'}</td>
+                    <td className="px-6 py-4 text-right text-sm">{item.stock}</td>
+                    <td className="px-6 py-4 text-right text-sm space-x-3">
+                      <button onClick={() => handlePromote(item.id, item.name)} className="text-green-600 font-bold hover:underline">Promote ↗</button>
+                      <Link to={`/supplier/inventory/edit/${item.id}`} className="text-blue-600">Edit</Link>
+                      <button onClick={() => handleDelete(item.id, item.name, false)} className="text-red-600">Delete</button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-          
+
+          {/* TAB 3: MY SALES */}
+          {activeTab === 'sales' && (
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order ID</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {sales.length === 0 ? (
+                  <tr><td colSpan={4} className="py-10 text-center text-gray-400">No marketplace sales yet.</td></tr>
+                ) : sales.map((o) => (
+                  <tr key={o.id}>
+                    <td className="px-6 py-4 text-sm font-bold">#{o.id}</td>
+                    <td className="px-6 py-4">{getStatusBadge(o.status)}</td>
+                    <td className="px-6 py-4 text-right text-sm font-bold">RM {o.total_amount?.toFixed(2) || "0.00"}</td>
+                    <td className="px-6 py-4 text-right">
+                      {o.status === 'processing' && (
+                        <button 
+                          onClick={() => setProcessingOrderId(o.id)}
+                          className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 shadow-sm"
+                        >
+                          Process Shipment
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Shipment Modal */}
+      {processingOrderId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="text-lg font-bold mb-4">Ship Order #{processingOrderId}</h3>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tracking Number / Shipping Provider</label>
+            <input 
+              type="text" 
+              className="w-full p-2 border border-gray-300 rounded-md mb-4 focus:ring-2 focus:ring-blue-500 outline-none" 
+              placeholder="e.g. J&T: JT12345678"
+              value={trackingNumber}
+              onChange={(e) => setTrackingNumber(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setProcessingOrderId(null)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+              <button 
+                onClick={handleShipOrder} 
+                disabled={!trackingNumber}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300"
+              >
+                Update Status
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

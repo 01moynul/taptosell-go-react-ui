@@ -124,3 +124,34 @@ export const payOnHoldOrder = async (orderId: string | number): Promise<PayOrder
   const response = await apiClient.post<PayOrderResponse>(`/dropshipper/orders/${orderId}/pay`, {});
   return response.data;
 };
+
+export const fetchSupplierSales = async (): Promise<DropshipperOrder[]> => {
+  const response = await apiClient.get<OrderListResponse>('/supplier/orders');
+  
+  return (response.data.orders || []).map((o) => ({
+    id: o.id,
+    user_id: o.userId,
+    status: o.status as DropshipperOrder['status'],
+    total_amount: o.total, // Keep total_amount for DropshipperOrder compatibility
+    order_date: o.createdAt,
+    shipping_address: "Fulfillment Required",
+    tracking_number: typeof o.tracking === 'object' && o.tracking?.Valid ? o.tracking.String : (typeof o.tracking === 'string' ? o.tracking : null),
+    items: [] 
+  }));
+};
+
+/**
+ * Updates an order with a tracking number and marks as shipped.
+ * PATCH /v1/supplier/orders/:id/ship
+ */
+export const updateOrderTracking = async (orderId: number, tracking: string): Promise<{ message: string; status: string }> => {
+  // [FIX] Define a local interface for the response to avoid 'any' (Error 3)
+  interface ShipResponse {
+    message: string;
+    status: string;
+  }
+  
+  // [FIX] Use established 'apiClient'
+  const response = await apiClient.patch<ShipResponse>(`/supplier/orders/${orderId}/ship`, { tracking });
+  return response.data;
+};
