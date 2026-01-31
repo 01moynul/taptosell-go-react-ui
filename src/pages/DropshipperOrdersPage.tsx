@@ -153,32 +153,43 @@ function DropshipperOrdersPage() {
               <div className="mb-4">
                 <ul className="text-sm space-y-1">
                   {order.items.map(item => (
-                    <li key={item.product_id} className="flex justify-between">
-                      <span className="text-gray-700">{item.product_name} x {item.quantity}</span>
-                      <span className="text-gray-900 font-medium">RM {item.unit_cost.toFixed(2)}</span>
+                    <li key={item.productId} className="flex justify-between">
+                      <span className="text-gray-700">{item.productName} x {item.quantity}</span>
+                      <span className="text-gray-900 font-medium">RM {item.unit_price.toFixed(2)}</span>
                     </li>
                   ))}
                 </ul>
               </div>
 
               {/* Footer and Actions */}
-              <div className="flex justify-between items-end pt-3 border-t">
-                <div>
-                  <p className="text-lg font-bold">Total: <span className="text-green-600">RM {order.total_amount.toFixed(2)}</span></p>
-                  <p className="text-sm text-gray-500 mt-1">Ship to: {order.shipping_address.substring(0, 40)}...</p>
+                <div className="flex justify-between items-end pt-3 border-t">
+                  <div>
+                    <p className="text-lg font-bold">Total: <span className="text-green-600">RM {order.total_amount.toFixed(2)}</span></p>
+                    <p className="text-sm text-gray-500 mt-1">Ship to: {order.shipping_address.substring(0, 40)}...</p>
+                  </div>
+                  
+                  <div className="flex flex-col items-end gap-2">
+                    {/* 1. Tracking Number Display (For Shipped Orders) */}
+                    {order.status === 'shipped' && order.tracking_number && (
+                      <div className="p-2 bg-blue-50 border border-blue-100 rounded-md">
+                        <p className="text-xs text-blue-800 font-semibold">
+                          📦 Tracking Number: <span className="font-mono text-sm select-all">{order.tracking_number}</span>
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 2. Pay Now Button (For On-Hold Orders) */}
+                    {order.status === 'on-hold' && (
+                      <button
+                        onClick={() => handlePayNow(order.id.toString(), order.total_amount)}
+                        disabled={isPaying !== null}
+                        className="bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 font-semibold transition duration-200 disabled:bg-gray-400"
+                      >
+                        {isPaying === order.id.toString() ? 'Processing...' : 'Pay Now'}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                
-                {/* Pay Now Button */}
-                {order.status === 'on-hold' && (
-                  <button
-                    onClick={() => handlePayNow(order.id, order.total_amount)}
-                    disabled={isPaying !== null}
-                    className="bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 font-semibold transition duration-200 disabled:bg-gray-400"
-                  >
-                    {isPaying === order.id ? 'Processing...' : 'Pay Now'}
-                  </button>
-                )}
-              </div>
             </div>
           ))}
         </div>

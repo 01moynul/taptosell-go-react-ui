@@ -77,7 +77,9 @@ export const fetchMyOrders = async (statusFilter?: string): Promise<DropshipperO
     order_date: o.createdAt,
     shipping_address: "Shipping Address Placeholder",
     // Handle SQL NullString safely
-    tracking_number: typeof o.tracking === 'object' && o.tracking?.Valid ? o.tracking.String : (typeof o.tracking === 'string' ? o.tracking : null),
+    tracking_number: typeof o.tracking === 'object' && o.tracking !== null && 'String' in o.tracking 
+    ? o.tracking.String 
+    : (typeof o.tracking === 'string' ? o.tracking : null),
     items: [] 
   }));
 };
@@ -135,7 +137,9 @@ export const fetchSupplierSales = async (): Promise<DropshipperOrder[]> => {
     total_amount: o.total, // Keep total_amount for DropshipperOrder compatibility
     order_date: o.createdAt,
     shipping_address: "Fulfillment Required",
-    tracking_number: typeof o.tracking === 'object' && o.tracking?.Valid ? o.tracking.String : (typeof o.tracking === 'string' ? o.tracking : null),
+    tracking_number: typeof o.tracking === 'object' && o.tracking !== null && 'String' in o.tracking 
+    ? o.tracking.String 
+    : (typeof o.tracking === 'string' ? o.tracking : null),
     items: [] 
   }));
 };

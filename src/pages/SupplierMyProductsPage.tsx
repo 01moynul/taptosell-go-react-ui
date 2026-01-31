@@ -266,6 +266,7 @@ const handleShipOrder = async () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order ID</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tracking</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
                 </tr>
@@ -277,6 +278,9 @@ const handleShipOrder = async () => {
                   <tr key={o.id}>
                     <td className="px-6 py-4 text-sm font-bold">#{o.id}</td>
                     <td className="px-6 py-4">{getStatusBadge(o.status)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                        {o.tracking_number || <span className="text-gray-400 italic">Not available</span>}
+                      </td>
                     <td className="px-6 py-4 text-right text-sm font-bold">RM {o.total_amount?.toFixed(2) || "0.00"}</td>
                     <td className="px-6 py-4 text-right">
                       {o.status === 'processing' && (
