@@ -9,20 +9,40 @@ export interface ProductVariantOption {
     value: string;
 }
 
+export interface ProductVariant {
+    id: number;
+    sku: string;
+    price: number;
+    stock: number;
+    options: ProductVariantOption[]; // e.g. [{name: "Color", value: "Red"}]
+}
+
 /**
  * Interface for the core marketplace product.
- * This is a minimal representation based on the data needed across the UI.
- * You should expand this to match the full Go product model (models.Product).
  */
 export interface Product {
     id: number;
     name: string;
     description: string;
-    price: number; // Corresponds to Go's price_to_tts
-    isVariable: boolean;
+    
+    price: number;     
+    srp: number;
+    stock: number;
+    
+    // Images can be a JSON string or array
+    images?: string | string[]; 
+    
+    // Variation Data
+    is_variable: boolean;
+    variants?: ProductVariant[];
+    // Maps option value to image URL (e.g., {"Red": "http://..."})
+    variation_images?: string | Record<string, string>; 
+    
     status: 'draft' | 'pending' | 'published' | 'rejected' | 'private_inventory';
-    // Add other fields (SKU, Stock, Categories, etc.) as needed
+    category?: string;
+    brand?: string;
 }
+
 
 /**
  * Defines the required payload for the POST /v1/products/:id/request-price-change endpoint.
