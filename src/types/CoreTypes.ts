@@ -111,16 +111,20 @@ export interface RejectProductPayload {
  * Interface for a Supplier's withdrawal request awaiting Manager processing.
  * Corresponds to Go model WithdrawalRequest in the Manager API response.
  */
-export interface WithdrawalRequest {
-    id: number;
-    supplierId: number;
-    supplierName: string; // Included for Manager view
-    amount: number;
-    status: 'wd-pending' | 'wd-processed' | 'wd-rejected';
-    bankDetails: string; // Bank details provided by the supplier
-    requestedAt: string; // ISO Date String
-}
+// src/types/CoreTypes.ts
 
+export interface WithdrawalRequest {
+  id: number;
+  userId: number;
+  amount: number;
+  // FIXED: Removed 'wd-' prefix to match actual API/DB values 
+  status: 'pending' | 'approved' | 'rejected'; 
+  bankDetails: string;
+  supplierName?: string;
+  supplierEmail?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 /**
  * Interface for the payload required by PATCH /v1/manager/withdrawal-requests/:id
  * This is used to approve or reject a request.

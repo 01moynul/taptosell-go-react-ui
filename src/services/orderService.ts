@@ -159,3 +159,15 @@ export const updateOrderTracking = async (orderId: number, tracking: string): Pr
   const response = await apiClient.patch<ShipResponse>(`/supplier/orders/${orderId}/ship`, { tracking });
   return response.data;
 };
+
+/**
+ * Marks an order as completed (received by dropshipper).
+ * POST /v1/dropshipper/orders/:id/complete
+ */
+export const completeOrder = async (orderId: string | number): Promise<{ message: string; status: string }> => {
+  const response = await apiClient.post<{ message: string; status: string }>(
+    `/dropshipper/orders/${orderId}/complete`, 
+    {}
+  );
+  return response.data;
+};

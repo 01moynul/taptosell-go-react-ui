@@ -2,9 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { type JSX } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { fetchMyOrders, payOnHoldOrder, type DropshipperOrder } from '../services/orderService';
+import { fetchMyOrders, payOnHoldOrder, completeOrder, type DropshipperOrder } from '../services/orderService';
 import axios from 'axios';
-
 // Define available status filters for the UI
 const ORDER_STATUSES = [
   { value: '', label: 'All Orders' },
@@ -81,6 +80,38 @@ function DropshipperOrdersPage() {
     }
   };
   
+  const [isCompleting, setIsCompleting] = useState<string | null>(null);
+
+  const handleMarkAsReceived = async (orderId: string) => {
+    if (!window.confirm("Confirm you have received this order? This will release funds to the supplier.")) return;
+
+    setIsCompleting(orderId);
+    try {
+      await completeOrder(orderId);
+      // Refresh the list to show the 'completed' status
+      loadOrders(); 
+    } catch (err) {
+      // 1. Define the shape of the error you expect (Standard Fix - Error 3)
+      interface ApiError {
+        response?: {
+          data?: {
+            error?: string;
+          };
+        };
+      }
+
+      // 2. Cast the error to our safe interface
+      const apiError = err as ApiError;
+
+      // 3. Safe to use without 'any'
+      const errorMessage = apiError.response?.data?.error || "Failed to complete order";
+      alert(errorMessage);
+      console.error("Completion error:", err);
+    } finally {
+      setIsCompleting(null);
+    }
+  };
+
   // Helper function to format date
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleDateString('en-MY', { 
@@ -186,6 +217,17 @@ function DropshipperOrdersPage() {
                         className="bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 font-semibold transition duration-200 disabled:bg-gray-400"
                       >
                         {isPaying === order.id.toString() ? 'Processing...' : 'Pay Now'}
+                      </button>
+                    )}
+
+                    {/* 3. Mark as Received Button (For Shipped Orders) */}
+                    {order.status === 'shipped' && (
+                      <button
+                        onClick={() => handleMarkAsReceived(order.id.toString())}
+                        disabled={isCompleting !== null}
+                        className="mt-2 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 font-semibold transition duration-200 disabled:bg-gray-400"
+                      >
+                        {isCompleting === order.id.toString() ? 'Processing...' : 'Mark as Received'}
                       </button>
                     )}
                   </div>

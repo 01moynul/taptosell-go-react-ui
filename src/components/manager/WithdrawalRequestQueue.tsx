@@ -15,7 +15,7 @@ const WithdrawalRequestQueue: React.FC = () => {
     const [action, setAction] = useState<'approve' | 'reject'>('approve');
     const [reason, setReason] = useState('');
 
-    /**
+/**
      * Fetches the list of pending withdrawal requests.
      */
     const fetchRequests = async () => {
@@ -23,7 +23,8 @@ const WithdrawalRequestQueue: React.FC = () => {
         setError(null);
         try {
             const data = await getWithdrawalRequests();
-            setRequests(data.filter(r => r.status === 'wd-pending')); // Filter to show only pending
+            // FIXED: Changed 'wd-pending' to 'pending' to match DB Enum [cite: 935]
+            setRequests(data.filter(r => r.status === 'pending')); 
         } catch (err) {
             console.error('Error fetching withdrawal requests:', err);
             setError('Failed to load withdrawal requests. Check API connection.');
@@ -204,7 +205,7 @@ const WithdrawalRequestQueue: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         <div className="font-bold text-green-700">RM {request.amount.toFixed(2)}</div>
-                                        <div className="text-xs text-yellow-600 font-semibold">{request.status.replace('wd-', '').toUpperCase()}</div>
+                                        <div className="text-xs text-yellow-600 font-semibold">{request.status.toUpperCase()}</div>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
                                         {request.bankDetails}
