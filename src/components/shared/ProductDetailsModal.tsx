@@ -1,6 +1,6 @@
 // src/components/shared/ProductDetailsModal.tsx
 import React, { useState } from 'react';
-import type { Product, ProductVariant } from '../../types/CoreTypes';
+import type { Product, ProductVariant, ProductVariantOption } from '../../types/CoreTypes';
 import { addToCart } from '../../services/cartService';
 
 interface ProductDetailsModalProps {
@@ -24,7 +24,6 @@ const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({ product, isOp
             const parsed = JSON.parse(product.images);
             if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
         } catch (e) {
-            // [FIX] Log error to satisfy linter
             console.error("Failed to parse init image:", e);
         }
     }
@@ -34,14 +33,32 @@ const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({ product, isOp
   if (!isOpen || !product) return null;
 
   // 1. Extract Variation Groups
-  const getVariationGroups = () => {
-    if (!product.variants) return {};
+const getVariationGroups = () => {
+    if (!product.variants || !Array.isArray(product.variants)) return {};
     const groups: Record<string, Set<string>> = {};
     
     product.variants.forEach(v => {
-      v.options.forEach(opt => {
-        if (!groups[opt.name]) groups[opt.name] = new Set();
-        groups[opt.name].add(opt.value);
+      let safeOptions: ProductVariantOption[] = [];
+
+      // [FIX] Phase 8.4: Use type assertion to handle the flexible interface
+      if (Array.isArray(v.options)) {
+          safeOptions = v.options;
+      } else if (typeof v.options === 'string' && v.options.trim() !== '') {
+          try {
+              const parsed = JSON.parse(v.options);
+              if (Array.isArray(parsed)) {
+                  safeOptions = parsed;
+              }
+          } catch (e) {
+              console.error("Failed to parse variant options JSON:", v.options, e);
+          }
+      }
+
+      safeOptions.forEach(opt => {
+        if (opt && opt.name) {
+            if (!groups[opt.name]) groups[opt.name] = new Set();
+            groups[opt.name].add(opt.value);
+        }
       });
     });
     return groups;
@@ -56,25 +73,36 @@ const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({ product, isOp
 
     // Try to find matching variant
     if (product.variants) {
-      const match = product.variants.find(v => 
-        v.options.every(o => newOptions[o.name] === o.value) &&
-        v.options.length === Object.keys(newOptions).length
-      );
+      const match = product.variants.find(v => {
+        let safeOptions: ProductVariantOption[] = [];
+        
+        if (Array.isArray(v.options)) {
+            safeOptions = v.options;
+        } else if (typeof v.options === 'string') {
+            // [FIX: Recurring Error #2] Added catch(e) + console.error
+            try { 
+                safeOptions = JSON.parse(v.options); 
+            } catch (e) {
+                console.error("Error parsing options during match:", e);
+            }
+        }
+
+        return safeOptions.every(o => newOptions[o.name] === o.value) &&
+               safeOptions.length === Object.keys(newOptions).length;
+      });
       setCurrentVariant(match || null);
     }
 
     // Check if there is a specific image for this option (e.g. "Red")
     let varImages: Record<string, string> = {};
-    
-    // [FIX] Handle JSON parsing safely with logging
-    if (typeof product.variation_images === 'string') {
+    if (typeof product.variationImages === 'string') {
         try { 
-            varImages = JSON.parse(product.variation_images); 
+            varImages = JSON.parse(product.variationImages); 
         } catch (e) {
             console.error("Failed to parse variation images:", e);
         }
-    } else if (typeof product.variation_images === 'object') {
-        varImages = product.variation_images as Record<string, string>;
+    } else if (typeof product.variationImages === 'object') {
+        varImages = product.variationImages as Record<string, string>;
     }
 
     if (varImages && varImages[value]) {
@@ -84,16 +112,20 @@ const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({ product, isOp
 
   // 3. Add To Cart Logic
   const handleAddToCart = async () => {
-    if (product.is_variable && !currentVariant) {
+    if (product.isVariable && !currentVariant) {
         setStatusMsg("Please select all options first.");
         return;
     }
 
-    // Use Variant ID if found, otherwise Product ID
-    const idToAdd = currentVariant ? currentVariant.id : product.id; 
-    
     try {
-        await addToCart(idToAdd, 1); 
+        if (currentVariant) {
+            // Case A: Variable Product -> Send Product ID + Variant ID
+            await addToCart(product.id, 1, currentVariant.id);
+        } else {
+            // Case B: Simple Product -> Send only Product ID
+            await addToCart(product.id, 1);
+        }
+
         setStatusMsg("Added to cart successfully!");
         setTimeout(onClose, 1000);
     } catch (err) {
@@ -133,26 +165,30 @@ const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({ product, isOp
             
             {/* Variation Selectors */}
             <div className="flex-grow space-y-4">
-                {Object.keys(variationGroups).map(groupName => (
-                    <div key={groupName}>
-                        <label className="block text-sm font-medium text-gray-700 mb-2 uppercase">{groupName}</label>
-                        <div className="flex flex-wrap gap-2">
-                            {Array.from(variationGroups[groupName]).map(val => (
-                                <button
-                                    key={val}
-                                    onClick={() => handleOptionSelect(groupName, val)}
-                                    className={`px-4 py-2 text-sm border rounded hover:border-blue-500 transition-colors ${
-                                        selectedOptions[groupName] === val 
-                                        ? 'bg-blue-600 text-white border-blue-600' 
-                                        : 'bg-white text-gray-700 border-gray-300'
-                                    }`}
-                                >
-                                    {val}
-                                </button>
-                            ))}
+                {Object.keys(variationGroups).length === 0 ? (
+                    <p className="text-gray-400 text-sm italic">No options available.</p>
+                ) : (
+                    Object.keys(variationGroups).map(groupName => (
+                        <div key={groupName}>
+                            <label className="block text-sm font-medium text-gray-700 mb-2 uppercase">{groupName}</label>
+                            <div className="flex flex-wrap gap-2">
+                                {Array.from(variationGroups[groupName]).map(val => (
+                                    <button
+                                        key={val}
+                                        onClick={() => handleOptionSelect(groupName, val)}
+                                        className={`px-4 py-2 text-sm border rounded hover:border-blue-500 transition-colors ${
+                                            selectedOptions[groupName] === val 
+                                            ? 'bg-blue-600 text-white border-blue-600' 
+                                            : 'bg-white text-gray-700 border-gray-300'
+                                        }`}
+                                    >
+                                        {val}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    ))
+                )}
             </div>
 
             {/* Stock & Add Button */}
@@ -168,9 +204,9 @@ const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({ product, isOp
 
                 <button 
                     onClick={handleAddToCart}
-                    disabled={displayStock === 0 || (product.is_variable && !currentVariant)}
+                    disabled={displayStock === 0 || (product.isVariable && !currentVariant)}
                     className={`w-full py-3 rounded font-bold text-lg transition-all ${
-                        displayStock === 0 || (product.is_variable && !currentVariant)
+                        displayStock === 0 || (product.isVariable && !currentVariant)
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
                     }`}

@@ -4,7 +4,7 @@ import apiClient from '../services/api';
 import axios from 'axios';
 import { useAuth } from '../hooks/useAuth';
 import { addToCart } from '../services/cartService';
-import type { Product } from '../types/CoreTypes'; // Use shared type
+import type { Product } from '../types/CoreTypes';
 import ProductDetailsModal from '../components/shared/ProductDetailsModal';
 
 function CatalogPage() {
@@ -15,7 +15,6 @@ function CatalogPage() {
   const isDropshipper = auth.user?.role === 'dropshipper';
   const [statusMessage, setStatusMessage] = useState<string>('');
 
-  // Modal State
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -28,7 +27,6 @@ function CatalogPage() {
         if (axios.isAxiosError(err) && err.response) {
           setError(err.response.data.message || 'Failed to load product catalog.');
         } else {
-            // [FIX] Use err logger
             console.error(err);
             setError('An unexpected network error occurred.');
         }
@@ -40,27 +38,28 @@ function CatalogPage() {
     fetchProducts();
   }, []);
 
-  // [FIX] Improved Helper for Thumbnails (No external placeholder)
   const getThumbnail = (product: Product): string | null => {
     if (!product.images) return null;
+    let imageUrl = '';
 
-    // 1. Array
     if (Array.isArray(product.images) && product.images.length > 0) {
-        return product.images[0];
+        imageUrl = product.images[0];
     }
-
-    // 2. JSON String
-    if (typeof product.images === 'string') {
+    else if (typeof product.images === 'string') {
         try {
             const parsed = JSON.parse(product.images);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                return parsed[0];
+                imageUrl = parsed[0];
             }
-        } catch (e) {
-            console.error("Image parse error", e);
-        }
+        } catch (e) { console.error("Image parse error", e); }
     }
-    return null;
+
+    if (!imageUrl) return null;
+    if (imageUrl.startsWith('/')) {
+        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+        return `${apiBase}${imageUrl}`;
+    }
+    return imageUrl;
   };
 
   const handleAddToCartClick = async (product: Product) => {
@@ -69,14 +68,13 @@ function CatalogPage() {
       return;
     }
 
-    // [NEW] Logic: Always open modal for variable products
-    if (product.is_variable) {
+    // [FIX] Updated property name to 'isVariable' (CamelCase)
+    if (product.isVariable) {
         setSelectedProduct(product);
         setIsModalOpen(true);
         return;
     }
 
-    // Simple product? Add directly
     try {
       await addToCart(product.id, 1);
       setStatusMessage(`Success: Added "${product.name}" to cart!`);
@@ -111,9 +109,18 @@ function CatalogPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {products.map(product => {
               const thumb = getThumbnail(product);
+              
+              // [FIX] Updated property name to 'isVariable'
+              const isVar = product.isVariable;
+              const isOutOfStock = product.stock === 0;
+              
+              const buttonText = isOutOfStock ? 'Sold Out' : (isVar ? 'Select Options' : 'Add to Cart');
+              const buttonClass = (!isDropshipper || isOutOfStock)
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : (isVar ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-green-600 text-white hover:bg-green-700');
+
               return (
                 <div key={product.id} className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col overflow-hidden group hover:shadow-md transition-shadow">
-                  {/* Image Area */}
                   <div className="h-64 w-full bg-gray-100 relative flex items-center justify-center">
                       {thumb ? (
                           <img 
@@ -122,13 +129,14 @@ function CatalogPage() {
                               className="w-full h-full object-cover"
                           />
                       ) : (
-                          // [FIX] CSS Placeholder instead of external URL
                           <div className="flex flex-col items-center text-gray-400">
                              <span className="text-4xl opacity-30">🖼️</span>
                              <span className="text-sm font-medium mt-2">No Image</span>
                           </div>
                       )}
-                      {product.is_variable && (
+                      
+                      {/* [FIX] Updated property name */}
+                      {isVar && (
                           <span className="absolute top-2 right-2 bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded shadow">
                               OPTIONS
                           </span>
@@ -151,14 +159,10 @@ function CatalogPage() {
                           
                           <button 
                             onClick={() => handleAddToCartClick(product)}
-                            disabled={!isDropshipper || product.stock === 0}
-                            className={`py-2 px-4 rounded text-sm font-medium transition-colors ${
-                                !isDropshipper || product.stock === 0 
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                            }`}
+                            disabled={!isDropshipper || isOutOfStock}
+                            className={`py-2 px-4 rounded text-sm font-medium transition-colors ${buttonClass}`}
                           >
-                            {product.stock === 0 ? 'Sold Out' : (product.is_variable ? 'Select Options' : 'Add to Cart')}
+                            {buttonText}
                           </button>
                       </div>
                   </div>
@@ -168,9 +172,6 @@ function CatalogPage() {
           </div>
       )}
 
-      {/* [CRITICAL FIX] Added 'key' prop here. 
-          This forces React to completely reset the Modal when the product changes. 
-      */}
       <ProductDetailsModal 
         key={selectedProduct ? selectedProduct.id : 'init'} 
         product={selectedProduct} 

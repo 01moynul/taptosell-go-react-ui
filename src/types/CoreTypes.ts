@@ -14,11 +14,13 @@ export interface ProductVariant {
     sku: string;
     price: number;
     stock: number;
-    options: ProductVariantOption[]; // e.g. [{name: "Color", value: "Red"}]
+    // [FIX] Allow string for raw JSON from API or array for parsed data
+    options: ProductVariantOption[] | string; 
 }
 
 /**
  * Interface for the core marketplace product.
+ * Updated to match the CamelCase JSON returned by the Go API.
  */
 export interface Product {
     id: number;
@@ -32,11 +34,14 @@ export interface Product {
     // Images can be a JSON string or array
     images?: string | string[]; 
     
-    // Variation Data
-    is_variable: boolean;
+    // [FIX] Renamed to CamelCase to match API response (isVariable)
+    isVariable: boolean;
+    
     variants?: ProductVariant[];
+    
+    // [FIX] Renamed to CamelCase to match API response (variationImages)
     // Maps option value to image URL (e.g., {"Red": "http://..."})
-    variation_images?: string | Record<string, string>; 
+    variationImages?: string | Record<string, string>; 
     
     status: 'draft' | 'pending' | 'published' | 'rejected' | 'private_inventory';
     category?: string;
