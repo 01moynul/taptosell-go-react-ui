@@ -2,6 +2,7 @@
 import apiClient from './api';
 
 // --- 1. Strong Types for Frontend Logic ---
+
 export interface OrderItemDetail {
   id: number;
   orderId: number;
@@ -10,6 +11,8 @@ export interface OrderItemDetail {
   unit_price: number;
   productName: string;
   productSku: string;
+  // [NEW] To display "Color: Red" in the Dropshipper UI
+  options: { name: string; value: string }[]; 
 }
 
 export interface DropshipperOrder {
@@ -28,14 +31,21 @@ interface PayOrderResponse {
     new_status: string;
 }
 
-// --- 2. Strong Types for Raw Backend Response (Fixes 'any' error) ---
+// --- 2. Strong Types for Raw Backend Response ---
+
+// [NEW] Exported because DropshipperOrdersPage uses it for Modal State
+export interface OrderDetailsResponse {
+  order: RawOrder;
+  items: OrderItemDetail[]; // We map RawItems to this clean type immediately
+}
+
 interface RawOrder {
   id: number;
   userId: number;
   status: string;
   total: number;
   createdAt: string;
-  tracking?: { String: string; Valid: boolean } | string | null; // Handle Go's NullString or raw string
+  tracking?: { String: string; Valid: boolean } | string | null;
 }
 
 interface RawOrderItem {
@@ -46,13 +56,16 @@ interface RawOrderItem {
   unitPrice: number;
   productName: string;
   productSku: string;
+  // [NEW] Backend sends parsed JSON here
+  options?: { name: string; value: string }[]; 
 }
 
 interface OrderListResponse {
   orders: RawOrder[];
 }
 
-interface OrderDetailsResponse {
+// Internal type for the raw GET /orders/:id response
+interface RawOrderDetailsAPIResponse {
   order: RawOrder;
   items: RawOrderItem[];
 }
@@ -66,7 +79,6 @@ interface OrderDetailsResponse {
 export const fetchMyOrders = async (statusFilter?: string): Promise<DropshipperOrder[]> => {
   const url = statusFilter ? `/dropshipper/orders?status=${statusFilter}` : '/dropshipper/orders';
   
-  // FIX: Use OrderListResponse instead of 'any'
   const response = await apiClient.get<OrderListResponse>(url);
   
   return (response.data.orders || []).map((o) => ({
@@ -76,10 +88,9 @@ export const fetchMyOrders = async (statusFilter?: string): Promise<DropshipperO
     total_amount: o.total,
     order_date: o.createdAt,
     shipping_address: "Shipping Address Placeholder",
-    // Handle SQL NullString safely
     tracking_number: typeof o.tracking === 'object' && o.tracking !== null && 'String' in o.tracking 
-    ? o.tracking.String 
-    : (typeof o.tracking === 'string' ? o.tracking : null),
+      ? o.tracking.String 
+      : (typeof o.tracking === 'string' ? o.tracking : null),
     items: [] 
   }));
 };
@@ -88,9 +99,8 @@ export const fetchMyOrders = async (statusFilter?: string): Promise<DropshipperO
  * Fetches details for a single order.
  * GET /v1/dropshipper/orders/:id
  */
-export const fetchOrderDetails = async (orderId: string): Promise<DropshipperOrder> => {
-  // FIX: Use OrderDetailsResponse instead of { order: any, items: any[] }
-  const response = await apiClient.get<OrderDetailsResponse>(`/dropshipper/orders/${orderId}`);
+export const fetchOrderDetails = async (orderId: number | string): Promise<OrderDetailsResponse> => {
+  const response = await apiClient.get<RawOrderDetailsAPIResponse>(`/dropshipper/orders/${orderId}`);
   
   const o = response.data.order;
   const rawItems = response.data.items || [];
@@ -103,17 +113,13 @@ export const fetchOrderDetails = async (orderId: string): Promise<DropshipperOrd
     quantity: item.quantity,
     unit_price: item.unitPrice,
     productName: item.productName,
-    productSku: item.productSku
+    productSku: item.productSku,
+    options: item.options || [] // Ensure it's never undefined
   }));
 
+  // Return the composite object expected by the Modal
   return {
-    id: o.id,
-    user_id: o.userId,
-    status: o.status as DropshipperOrder['status'],
-    total_amount: o.total,
-    order_date: o.createdAt,
-    shipping_address: "Shipping Address Placeholder",
-    tracking_number: typeof o.tracking === 'object' && o.tracking?.Valid ? o.tracking.String : (typeof o.tracking === 'string' ? o.tracking : null),
+    order: o,
     items: mappedItems
   };
 };
@@ -134,12 +140,12 @@ export const fetchSupplierSales = async (): Promise<DropshipperOrder[]> => {
     id: o.id,
     user_id: o.userId,
     status: o.status as DropshipperOrder['status'],
-    total_amount: o.total, // Keep total_amount for DropshipperOrder compatibility
+    total_amount: o.total, 
     order_date: o.createdAt,
     shipping_address: "Fulfillment Required",
     tracking_number: typeof o.tracking === 'object' && o.tracking !== null && 'String' in o.tracking 
-    ? o.tracking.String 
-    : (typeof o.tracking === 'string' ? o.tracking : null),
+      ? o.tracking.String 
+      : (typeof o.tracking === 'string' ? o.tracking : null),
     items: [] 
   }));
 };
@@ -149,13 +155,10 @@ export const fetchSupplierSales = async (): Promise<DropshipperOrder[]> => {
  * PATCH /v1/supplier/orders/:id/ship
  */
 export const updateOrderTracking = async (orderId: number, tracking: string): Promise<{ message: string; status: string }> => {
-  // [FIX] Define a local interface for the response to avoid 'any' (Error 3)
   interface ShipResponse {
     message: string;
     status: string;
   }
-  
-  // [FIX] Use established 'apiClient'
   const response = await apiClient.patch<ShipResponse>(`/supplier/orders/${orderId}/ship`, { tracking });
   return response.data;
 };
@@ -170,4 +173,23 @@ export const completeOrder = async (orderId: string | number): Promise<{ message
     {}
   );
   return response.data;
+};
+
+// --- Supplier Order Details (For Packing List) ---
+
+export interface SupplierOrderItem {
+  productName: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  options: { name: string; value: string }[];
+}
+
+export interface SupplierOrderDetailsResponse {
+  items: SupplierOrderItem[];
+}
+
+export const fetchSupplierOrderDetails = async (orderId: number): Promise<SupplierOrderItem[]> => {
+  const response = await apiClient.get<SupplierOrderDetailsResponse>(`/supplier/orders/${orderId}`);
+  return response.data.items;
 };

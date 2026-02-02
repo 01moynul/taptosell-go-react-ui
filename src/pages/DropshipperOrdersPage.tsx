@@ -1,10 +1,16 @@
 // src/pages/DropshipperOrdersPage.tsx
-import { useState, useEffect, useCallback } from 'react';
-import { type JSX } from 'react';
+import { useState, useEffect, useCallback, type JSX } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { fetchMyOrders, payOnHoldOrder, completeOrder, type DropshipperOrder } from '../services/orderService';
+import { 
+  fetchMyOrders, 
+  payOnHoldOrder, 
+  completeOrder, 
+  fetchOrderDetails, // [NEW] Import this
+  type DropshipperOrder,
+  type OrderDetailsResponse // [NEW] Import this
+} from '../services/orderService';
 import axios from 'axios';
-// Define available status filters for the UI
+
 const ORDER_STATUSES = [
   { value: '', label: 'All Orders' },
   { value: 'on-hold', label: 'On Hold (Payment Pending)' },
@@ -19,12 +25,16 @@ function DropshipperOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [isPaying, setIsPaying] = useState<string | null>(null); // Stores the ID of the order currently being paid
+  const [isPaying, setIsPaying] = useState<string | null>(null);
+  const [isCompleting, setIsCompleting] = useState<string | null>(null);
+
+  // [NEW] Modal State
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<OrderDetailsResponse | null>(null);
 
   const auth = useAuth();
   const isDropshipper = auth.user?.role === 'dropshipper';
 
-  // Function to load the orders based on the current filter
   const loadOrders = useCallback(async () => {
     if (!auth.token || !isDropshipper) {
       setError('Access denied. You must be a logged-in Dropshipper.');
@@ -51,189 +61,193 @@ function DropshipperOrdersPage() {
     loadOrders();
   }, [loadOrders]);
 
-  // Handler for the "Pay Now" button
+  // [NEW] View Details Handler
+  const handleViewDetails = async (orderId: number) => {
+      setViewModalOpen(true);
+      setSelectedOrderDetails(null); // Clear previous
+      try {
+          const details = await fetchOrderDetails(orderId);
+          setSelectedOrderDetails(details);
+      } catch (err) {
+          console.error("Failed to load details:", err);
+          alert("Could not load order details.");
+          setViewModalOpen(false);
+      }
+  };
+
   const handlePayNow = async (orderId: string, totalAmount: number) => {
-    if (!window.confirm(`Are you sure you want to pay RM ${totalAmount.toFixed(2)} for this order? This will be deducted from your wallet.`)) {
-      return;
-    }
-
-    setIsPaying(orderId); // Start loading state for this specific order
-    setError('');
-    
+    if (!window.confirm(`Pay RM ${totalAmount.toFixed(2)}?`)) return;
+    setIsPaying(orderId);
     try {
-      // 1. Call the API to process payment
-      const response = await payOnHoldOrder(orderId);
-
-      // 2. Display success message based on new status
-      alert(`Payment successful! Order status updated to: ${response.new_status.toUpperCase()}`);
-
-      // 3. Reload the orders list to update the status and remove the 'Pay Now' button
+      await payOnHoldOrder(orderId);
+      alert(`Payment successful!`);
       await loadOrders();
-
     } catch (err) {
-      const msg = axios.isAxiosError(err) && err.response?.data?.message
-        ? err.response.data.message
-        : 'Payment failed. Check your wallet balance.';
-      setError(`Payment Error: ${msg}`);
+      interface ApiError { response?: { data?: { message?: string } } }
+      const apiError = err as ApiError;
+      alert(`Payment Error: ${apiError.response?.data?.message || "Failed"}`);
     } finally {
       setIsPaying(null);
     }
   };
-  
-  const [isCompleting, setIsCompleting] = useState<string | null>(null);
 
   const handleMarkAsReceived = async (orderId: string) => {
-    if (!window.confirm("Confirm you have received this order? This will release funds to the supplier.")) return;
-
+    if (!window.confirm("Confirm receipt? This releases funds to supplier.")) return;
     setIsCompleting(orderId);
     try {
       await completeOrder(orderId);
-      // Refresh the list to show the 'completed' status
       loadOrders(); 
     } catch (err) {
-      // 1. Define the shape of the error you expect (Standard Fix - Error 3)
-      interface ApiError {
-        response?: {
-          data?: {
-            error?: string;
-          };
-        };
-      }
-
-      // 2. Cast the error to our safe interface
-      const apiError = err as ApiError;
-
-      // 3. Safe to use without 'any'
-      const errorMessage = apiError.response?.data?.error || "Failed to complete order";
-      alert(errorMessage);
-      console.error("Completion error:", err);
+      console.error(err);
+      alert("Failed to complete order.");
     } finally {
       setIsCompleting(null);
     }
   };
 
-  // Helper function to format date
-  const formatDate = (dateString: string): string => {
+  const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-MY', { 
       year: 'numeric', month: 'short', day: 'numeric'
     });
   };
 
-  // Helper function to get status badge color
-  const getStatusBadge = (status: DropshipperOrder['status']): JSX.Element => {
-    let color = '';
-    switch (status) {
-      case 'on-hold': color = 'bg-yellow-100 text-yellow-800'; break;
-      case 'processing': color = 'bg-blue-100 text-blue-800'; break;
-      case 'shipped': color = 'bg-indigo-100 text-indigo-800'; break;
-      case 'completed': color = 'bg-green-100 text-green-800'; break;
-      case 'cancelled': color = 'bg-red-100 text-red-800'; break;
-      default: color = 'bg-gray-100 text-gray-800';
-    }
+  const getStatusBadge = (status: string): JSX.Element => {
+    let color = 'bg-gray-100 text-gray-800';
+    if (status === 'on-hold') color = 'bg-yellow-100 text-yellow-800';
+    if (status === 'processing') color = 'bg-blue-100 text-blue-800';
+    if (status === 'shipped') color = 'bg-purple-100 text-purple-800';
+    if (status === 'completed') color = 'bg-green-100 text-green-800';
+    if (status === 'cancelled') color = 'bg-red-100 text-red-800';
     return (
-      <span className={`inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium capitalize ${color}`}>
+      <span className={`inline-flex items-center px-3 py-0.5 rounded-full text-xs font-medium capitalize ${color}`}>
         {status.replace(/-/g, ' ')}
       </span>
     );
   };
 
-  // --- Rendering Logic ---
-
-  if (loading) return <h1 className="text-xl font-bold">Loading Your Orders...</h1>;
-  if (error) return <h1 className="text-xl text-red-600">{error}</h1>;
-  if (!orders && !loading) return <h1 className="text-xl text-red-600">No orders found.</h1>;
+  if (loading && orders.length === 0) return <div className="p-8 text-center">Loading...</div>;
+  if (error) return <div className="p-8 text-red-600 font-bold">{error}</div>;
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container mx-auto p-4 max-w-5xl">
       <h1 className="text-3xl font-bold mb-6">My Order History</h1>
 
-      {/* Filter and Messages */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="mb-6">
         <select 
           value={statusFilter} 
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+          className="p-2 border border-gray-300 rounded-md"
         >
-          {ORDER_STATUSES.map(s => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
+          {ORDER_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
-        
-        {error && <p className="text-red-600 font-medium bg-red-100 p-3 rounded">Last action error: {error}</p>}
       </div>
 
-      {/* Orders Table/List */}
-      {orders.length === 0 ? (
-        <p className="text-gray-600">No orders found matching this filter.</p>
-      ) : (
-        <div className="space-y-4">
-          {orders.map((order) => (
-            <div key={order.id} className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-              {/* Header Row */}
-              <div className="flex justify-between items-start border-b pb-3 mb-3">
-                <div className="text-sm">
-                  <p className="text-gray-500">Order ID: <span className="text-gray-800 font-medium">{order.id}</span></p>
-                  <p className="text-gray-500">Date Placed: <span className="text-gray-800 font-medium">{formatDate(order.order_date)}</span></p>
-                </div>
-                <div>
-                  {getStatusBadge(order.status)}
-                </div>
+      <div className="space-y-4">
+        {orders.map((order) => (
+          <div key={order.id} className="bg-white p-6 rounded-lg shadow border border-gray-200">
+            <div className="flex justify-between items-start border-b pb-3 mb-3">
+              <div>
+                <p className="text-gray-500 text-sm">Order <span className="font-bold text-gray-800">#{order.id}</span></p>
+                <p className="text-gray-400 text-xs">{formatDate(order.order_date)}</p>
               </div>
-
-              {/* Items Summary */}
-              <div className="mb-4">
-                <ul className="text-sm space-y-1">
-                  {order.items.map(item => (
-                    <li key={item.productId} className="flex justify-between">
-                      <span className="text-gray-700">{item.productName} x {item.quantity}</span>
-                      <span className="text-gray-900 font-medium">RM {item.unit_price.toFixed(2)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Footer and Actions */}
-                <div className="flex justify-between items-end pt-3 border-t">
-                  <div>
-                    <p className="text-lg font-bold">Total: <span className="text-green-600">RM {order.total_amount.toFixed(2)}</span></p>
-                    <p className="text-sm text-gray-500 mt-1">Ship to: {order.shipping_address.substring(0, 40)}...</p>
-                  </div>
-                  
-                  <div className="flex flex-col items-end gap-2">
-                    {/* 1. Tracking Number Display (For Shipped Orders) */}
-                    {order.status === 'shipped' && order.tracking_number && (
-                      <div className="p-2 bg-blue-50 border border-blue-100 rounded-md">
-                        <p className="text-xs text-blue-800 font-semibold">
-                          📦 Tracking Number: <span className="font-mono text-sm select-all">{order.tracking_number}</span>
-                        </p>
-                      </div>
-                    )}
-
-                    {/* 2. Pay Now Button (For On-Hold Orders) */}
-                    {order.status === 'on-hold' && (
-                      <button
-                        onClick={() => handlePayNow(order.id.toString(), order.total_amount)}
-                        disabled={isPaying !== null}
-                        className="bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 font-semibold transition duration-200 disabled:bg-gray-400"
-                      >
-                        {isPaying === order.id.toString() ? 'Processing...' : 'Pay Now'}
-                      </button>
-                    )}
-
-                    {/* 3. Mark as Received Button (For Shipped Orders) */}
-                    {order.status === 'shipped' && (
-                      <button
-                        onClick={() => handleMarkAsReceived(order.id.toString())}
-                        disabled={isCompleting !== null}
-                        className="mt-2 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 font-semibold transition duration-200 disabled:bg-gray-400"
-                      >
-                        {isCompleting === order.id.toString() ? 'Processing...' : 'Mark as Received'}
-                      </button>
-                    )}
-                  </div>
-                </div>
+              {getStatusBadge(order.status)}
             </div>
-          ))}
+
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-lg font-bold text-gray-900">RM {order.total_amount.toFixed(2)}</p>
+                {order.tracking_number && (
+                   <p className="text-xs text-purple-700 font-mono mt-1">Tracking: {order.tracking_number}</p>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                {/* [NEW] View Details Button */}
+                <button 
+                  onClick={() => handleViewDetails(order.id)}
+                  className="px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded border border-blue-200"
+                >
+                  View Items
+                </button>
+
+                {order.status === 'on-hold' && (
+                  <button
+                    onClick={() => handlePayNow(order.id.toString(), order.total_amount)}
+                    disabled={isPaying !== null}
+                    className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {isPaying === order.id.toString() ? '...' : 'Pay Now'}
+                  </button>
+                )}
+
+                {order.status === 'shipped' && (
+                  <button
+                    onClick={() => handleMarkAsReceived(order.id.toString())}
+                    disabled={isCompleting !== null}
+                    className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                  >
+                    Confirm Receipt
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        {orders.length === 0 && <p className="text-gray-500 text-center py-8">No orders found.</p>}
+      </div>
+
+      {/* [NEW] Order Details Modal */}
+      {viewModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl max-h-[80vh] flex flex-col">
+            <div className="p-5 border-b flex justify-between items-center bg-gray-50 rounded-t-lg">
+              <h3 className="text-lg font-bold">Order Details #{selectedOrderDetails?.order.id}</h3>
+              <button onClick={() => setViewModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              {!selectedOrderDetails ? (
+                <div className="text-center py-10 text-gray-400">Loading details...</div>
+              ) : (
+                <table className="min-w-full text-left">
+                  <thead>
+                    <tr className="text-xs text-gray-500 uppercase border-b">
+                      <th className="pb-2">Product</th>
+                      <th className="pb-2">SKU</th>
+                      <th className="pb-2">Options</th>
+                      <th className="pb-2 text-right">Price</th>
+                      <th className="pb-2 text-right">Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {selectedOrderDetails.items.map((item, idx) => (
+                      <tr key={idx} className="text-sm">
+                        <td className="py-3 font-medium text-gray-800">{item.productName}</td>
+                        <td className="py-3 text-gray-500">{item.productSku}</td>
+                        <td className="py-3">
+                          {item.options && item.options.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {item.options.map((opt, i) => (
+                                <span key={i} className="bg-gray-100 border border-gray-200 text-gray-600 px-2 py-0.5 rounded text-xs">
+                                  {opt.name}: {opt.value}
+                                </span>
+                              ))}
+                            </div>
+                          ) : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className="py-3 text-right">RM {item.unit_price.toFixed(2)}</td>
+                        <td className="py-3 text-right font-bold">{item.quantity}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            
+            <div className="p-4 border-t bg-gray-50 rounded-b-lg flex justify-end">
+              <button onClick={() => setViewModalOpen(false)} className="px-5 py-2 bg-gray-200 hover:bg-gray-300 rounded font-medium text-gray-700">Close</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

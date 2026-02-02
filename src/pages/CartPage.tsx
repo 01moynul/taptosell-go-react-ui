@@ -2,11 +2,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { fetchCart, updateCartItem, removeFromCart } from '../services/cartService';
-import type { CartResponse } from '../services/cartService'; // ✅ Standard Fix: Type-only import
+import type { CartResponse } from '../services/cartService';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 
-// --- ✅ Standard Fix: Define Interface to replace forbidden 'any' ---
 interface CartItem {
   productId: number;
   name: string;
@@ -14,6 +13,8 @@ interface CartItem {
   quantity: number;
   lineTotal: number;
   stock: number;
+  // [NEW] To display "Color: Red"
+  options?: { name: string; value: string }[]; 
 }
 
 function CartPage() {
@@ -38,13 +39,10 @@ function CartPage() {
       const data = await fetchCart();
       setCart(data);
     } catch (err) {
-      // ✅ FIX: Use 'axios' to safely parse the error (satisfies the linter)
       console.error("Failed to load cart:", err);
-
       const msg = axios.isAxiosError(err) && err.response?.data?.message
         ? err.response.data.message
-        : 'Failed to load cart. Please try logging in again.';
-        
+        : 'Failed to load cart.';
       setError(`Error: ${msg}`);
     } finally {
       setLoading(false);
@@ -62,7 +60,6 @@ function CartPage() {
       await updateCartItem(item.productId, newQuantity);
       await loadCart();
     } catch (err) {
-      // ✅ Standard Fix: Log the error for developer debugging
       console.error("Update quantity failed:", err);
       alert("Failed to update quantity.");
     } finally {
@@ -77,7 +74,6 @@ function CartPage() {
       await removeFromCart(productId);
       await loadCart();
     } catch (err) {
-      // ✅ Standard Fix: Log the error for developer debugging
       console.error("Remove item failed:", err);
       alert("Failed to remove item.");
     } finally {
@@ -85,7 +81,7 @@ function CartPage() {
     }
   };
 
-  if (loading) return <div className="p-8 text-center font-bold">Loading Cart...</div>;
+  if (loading) return <div className="p-8 text-center font-bold animate-pulse">Loading Cart...</div>;
   if (error) return <div className="p-8 text-center text-red-600 font-bold">{error}</div>;
   
   const items = (cart?.items as unknown as CartItem[]) || [];
@@ -108,12 +104,24 @@ function CartPage() {
 
       <div className="flex flex-col lg:flex-row gap-8">
         <div className="lg:w-3/4 space-y-4">
-          {items.map((item) => (
-            <div key={item.productId} className="p-4 border rounded-lg flex items-center justify-between shadow-sm bg-white">
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold">{item.name}</h3>
-                {/* ✅ FIX: Access 'price' property aligned with Go backend JSON tags */}
-                <p className="text-sm text-gray-500">Unit Cost: RM {(item.price || 0).toFixed(2)}</p>
+          {items.map((item, idx) => (
+            <div key={`${item.productId}-${idx}`} className="p-4 border rounded-lg flex flex-col sm:flex-row items-center justify-between shadow-sm bg-white gap-4">
+              
+              <div className="flex-1 text-center sm:text-left">
+                <h3 className="text-lg font-bold text-gray-800">{item.name}</h3>
+                
+                {/* [NEW] Display Variant Options (e.g. Size: M) */}
+                {item.options && item.options.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-1 justify-center sm:justify-start">
+                    {item.options.map((opt, i) => (
+                      <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded border">
+                        {opt.name}: {opt.value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                <p className="text-sm text-gray-500 mt-1">Unit Cost: RM {(item.price || 0).toFixed(2)}</p>
               </div>
 
               <div className="flex items-center space-x-6">
@@ -124,11 +132,10 @@ function CartPage() {
                 </div>
 
                 <div className="min-w-[100px] text-right">
-                  {/* ✅ FIX: Access 'lineTotal' property aligned with Go backend JSON tags */}
                   <span className="text-lg font-bold text-indigo-600">RM {(item.lineTotal || 0).toFixed(2)}</span>
                 </div>
 
-                <button onClick={() => handleRemoveItem(item.productId, item.name)} className="text-red-500 hover:text-red-700 font-medium">Remove</button>
+                <button onClick={() => handleRemoveItem(item.productId, item.name)} className="text-red-500 hover:text-red-700 font-medium text-sm">Remove</button>
               </div>
             </div>
           ))}
@@ -139,11 +146,15 @@ function CartPage() {
             <h2 className="text-xl font-bold mb-4 border-b pb-2">Summary</h2>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-gray-600">Subtotal:</span>
-                <span className="font-bold text-lg">RM {(cart?.subtotal || 0).toFixed(2)}</span>
+                <span className="text-gray-600">Items:</span>
+                <span className="font-medium">{cart?.total_items || 0}</span>
               </div>
-              <Link to="/checkout" className="block w-full">
-                <button className="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 font-bold shadow-lg">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Subtotal:</span>
+                <span className="font-bold text-xl text-indigo-600">RM {(cart?.subtotal || 0).toFixed(2)}</span>
+              </div>
+              <Link to="/checkout" className="block w-full mt-4">
+                <button className="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 font-bold shadow-lg transition-transform active:scale-95">
                   Proceed to Checkout
                 </button>
               </Link>

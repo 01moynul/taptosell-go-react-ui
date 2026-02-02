@@ -9,15 +9,15 @@ import {
   deleteInventoryItem,
   promoteInventoryItem 
 } from '../services/supplierProductService';
-import { fetchSupplierSales, updateOrderTracking } from '../services/orderService';
+import { fetchSupplierSales, updateOrderTracking, fetchSupplierOrderDetails, type SupplierOrderItem } from '../services/orderService';
 
 // [FIX] Strict interface to replace 'any'
 interface SupplierSale {
   id: number;
   status: string;
-  total_amount: number; // Matches DropshipperOrder
-  order_date: string;   // Matches DropshipperOrder
-  tracking_number?: string | null; // Allow null to fix the TS(2345) error
+  total_amount: number; 
+  order_date: string;   
+  tracking_number?: string | null; 
 }
 
 // [FIX] Integrated in Marketplace Tab to satisfy linter
@@ -50,17 +50,22 @@ function SupplierMyProductsPage() {
   
   // UI States
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>(''); // [FIX] Now used in UI
+  const [error, setError] = useState<string>(''); 
   const [statusFilter, setStatusFilter] = useState<string>('');
   
+  // Shipment Modal State
   const [processingOrderId, setProcessingOrderId] = useState<number | null>(null);
   const [trackingNumber, setTrackingNumber] = useState<string>('');
+
+  // [NEW] View Order Details Modal State
+  const [viewOrderModalOpen, setViewOrderModalOpen] = useState(false);
+  const [selectedOrderItems, setSelectedOrderItems] = useState<SupplierOrderItem[]>([]);
+  const [viewingOrderId, setViewingOrderId] = useState<number | null>(null);
 
   const handleTabSwitch = (tab: 'marketplace' | 'private' | 'sales') => {
     setActiveTab(tab);
     navigate(`?view=${tab}`, { replace: true });
   };
-
   
   const loadData = useCallback(async () => {
     if (!auth.token || !isSupplier) return;
@@ -117,23 +122,38 @@ function SupplierMyProductsPage() {
     }
   };
 
-const handleShipOrder = async () => {
+  const handleShipOrder = async () => {
     if (!processingOrderId || !trackingNumber) return;
     try {
       setLoading(true);
-      // [FIX] Now calling the real backend service
       await updateOrderTracking(processingOrderId, trackingNumber); 
       alert(`Order #${processingOrderId} has been shipped!`);
       setProcessingOrderId(null);
       setTrackingNumber('');
       loadData();
     } catch (err) {
-      console.error("Shipment Error:", err); // Satisfies linter [cite: 1775]
+      console.error("Shipment Error:", err); 
       alert("Failed to update shipment status.");
     } finally {
       setLoading(false);
     }
-};
+  };
+
+  // [NEW] Function to open Details Modal
+  const handleViewDetails = async (orderId: number) => {
+      setViewingOrderId(orderId);
+      setViewOrderModalOpen(true);
+      setSelectedOrderItems([]); // Clear previous
+      
+      try {
+          const items = await fetchSupplierOrderDetails(orderId);
+          setSelectedOrderItems(items);
+      } catch (err) {
+          console.error("Failed to fetch details:", err);
+          alert("Could not load order details.");
+          setViewOrderModalOpen(false);
+      }
+  };
 
   const getStatusBadge = (status: string): JSX.Element => {
     const styles: Record<string, string> = {
@@ -178,7 +198,6 @@ const handleShipOrder = async () => {
         )}
       </div>
 
-      {/* [FIX] Error Alert Banner */}
       {error && (
         <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 flex justify-between items-center">
           <p className="text-sm">{error}</p>
@@ -229,7 +248,7 @@ const handleShipOrder = async () => {
             </table>
           )}
 
-          {/* TAB 2: [FIXED] PRIVATE INVENTORY */}
+          {/* TAB 2: PRIVATE INVENTORY */}
           {activeTab === 'private' && (
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -259,7 +278,7 @@ const handleShipOrder = async () => {
             </table>
           )}
 
-          {/* TAB 3: MY SALES */}
+          {/* TAB 3: MY SALES (UPDATED) */}
           {activeTab === 'sales' && (
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -282,13 +301,21 @@ const handleShipOrder = async () => {
                         {o.tracking_number || <span className="text-gray-400 italic">Not available</span>}
                       </td>
                     <td className="px-6 py-4 text-right text-sm font-bold">RM {o.total_amount?.toFixed(2) || "0.00"}</td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right space-x-2">
+                      {/* [NEW] View Details Button */}
+                      <button 
+                        onClick={() => handleViewDetails(o.id)}
+                        className="text-blue-600 hover:underline text-sm font-medium"
+                      >
+                        View Items
+                      </button>
+
                       {o.status === 'processing' && (
                         <button 
                           onClick={() => setProcessingOrderId(o.id)}
                           className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 shadow-sm"
                         >
-                          Process Shipment
+                          Ship
                         </button>
                       )}
                     </td>
@@ -305,7 +332,7 @@ const handleShipOrder = async () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-2xl">
             <h3 className="text-lg font-bold mb-4">Ship Order #{processingOrderId}</h3>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tracking Number / Shipping Provider</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tracking Number</label>
             <input 
               type="text" 
               className="w-full p-2 border border-gray-300 rounded-md mb-4 focus:ring-2 focus:ring-blue-500 outline-none" 
@@ -327,6 +354,65 @@ const handleShipOrder = async () => {
           </div>
         </div>
       )}
+
+      {/* [NEW] Order Details Modal */}
+      {viewOrderModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-lg w-full max-w-2xl shadow-2xl max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b flex justify-between items-center">
+                <h3 className="text-xl font-bold">Packing List: Order #{viewingOrderId}</h3>
+                <button onClick={() => setViewOrderModalOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+                {selectedOrderItems.length === 0 ? (
+                    <div className="text-center text-gray-400 py-4">Loading details...</div>
+                ) : (
+                    <table className="min-w-full text-left">
+                        <thead>
+                            <tr className="border-b text-sm text-gray-500">
+                                <th className="pb-2">Product</th>
+                                <th className="pb-2">SKU</th>
+                                <th className="pb-2">Options</th>
+                                <th className="pb-2 text-right">Qty</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {selectedOrderItems.map((item, idx) => (
+                                <tr key={idx} className="text-sm">
+                                    <td className="py-3 font-medium">{item.productName}</td>
+                                    <td className="py-3 text-gray-500">{item.sku}</td>
+                                    <td className="py-3">
+                                        {item.options && item.options.length > 0 ? (
+                                            <div className="flex flex-wrap gap-1">
+                                                {item.options.map((opt, i) => (
+                                                    <span key={i} className="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-xs">
+                                                        {opt.name}: {opt.value}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : <span className="text-gray-400 italic">-</span>}
+                                    </td>
+                                    <td className="py-3 text-right font-bold text-lg">{item.quantity}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+            
+            <div className="p-4 border-t bg-gray-50 flex justify-end">
+                <button 
+                    onClick={() => setViewOrderModalOpen(false)} 
+                    className="px-6 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 font-medium"
+                >
+                    Close
+                </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
