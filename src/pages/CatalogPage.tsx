@@ -1,4 +1,3 @@
-// src/pages/CatalogPage.tsx
 import { useEffect, useState } from 'react';
 import apiClient from '../services/api';
 import axios from 'axios';
@@ -38,6 +37,16 @@ function CatalogPage() {
     fetchProducts();
   }, []);
 
+  // [FIX] Helper to calculate true stock from variants
+  const getProductStock = (product: Product): number => {
+    if (product.isVariable && product.variants && product.variants.length > 0) {
+        // Sum up the stock of all variants (e.g. 1 + 3 + 1 + 1 = 6)
+        return product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+    }
+    // Fallback for simple products
+    return product.stock || 0;
+  };
+
   const getThumbnail = (product: Product): string | null => {
     if (!product.images) return null;
     let imageUrl = '';
@@ -68,7 +77,6 @@ function CatalogPage() {
       return;
     }
 
-    // [FIX] Updated property name to 'isVariable' (CamelCase)
     if (product.isVariable) {
         setSelectedProduct(product);
         setIsModalOpen(true);
@@ -78,11 +86,12 @@ function CatalogPage() {
     try {
       await addToCart(product.id, 1);
       setStatusMessage(`Success: Added "${product.name}" to cart!`);
-    } catch (err) {
-      const msg = axios.isAxiosError(err) && err.response?.data?.message 
-        ? err.response.data.message 
-        : 'Failed to add to cart.';
-      setStatusMessage(`Error: ${msg}`);
+    } catch (err: unknown) {
+        // Safe error handling
+        interface ApiError { response?: { data?: { message?: string } } }
+        const apiError = err as ApiError;
+        const msg = apiError.response?.data?.message || 'Failed to add to cart.';
+        setStatusMessage(`Error: ${msg}`);
     } finally {
       setTimeout(() => setStatusMessage(''), 3000);
     }
@@ -110,9 +119,11 @@ function CatalogPage() {
             {products.map(product => {
               const thumb = getThumbnail(product);
               
-              // [FIX] Updated property name to 'isVariable'
               const isVar = product.isVariable;
-              const isOutOfStock = product.stock === 0;
+              
+              // [FIX] Use calculated stock instead of static parent stock
+              const currentStock = getProductStock(product);
+              const isOutOfStock = currentStock === 0;
               
               const buttonText = isOutOfStock ? 'Sold Out' : (isVar ? 'Select Options' : 'Add to Cart');
               const buttonClass = (!isDropshipper || isOutOfStock)
@@ -135,7 +146,6 @@ function CatalogPage() {
                           </div>
                       )}
                       
-                      {/* [FIX] Updated property name */}
                       {isVar && (
                           <span className="absolute top-2 right-2 bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded shadow">
                               OPTIONS
@@ -153,8 +163,9 @@ function CatalogPage() {
                       </div>
                       
                       <div className="flex justify-between items-center mt-auto pt-4 border-t border-gray-100">
-                          <span className={`text-sm font-medium ${product.stock > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {product.stock > 0 ? `${product.stock} in stock` : 'Out of Stock'}
+                          {/* [FIX] Display calculated stock */}
+                          <span className={`text-sm font-medium ${currentStock > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {currentStock > 0 ? `${currentStock} in stock` : 'Out of Stock'}
                           </span>
                           
                           <button 
