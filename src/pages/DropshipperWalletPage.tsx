@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import apiClient from '../services/api'; // Direct API usage to ensure type safety
 import axios from 'axios';
+import toast from 'react-hot-toast'; // Make sure you have this for notifications
 
 // 1. Define the Interface EXACTLY as the Go Backend sends it
 interface WalletTransaction {
@@ -41,8 +42,8 @@ function DropshipperWalletPage() {
       const response = await apiClient.get<WalletResponse>('/dropshipper/wallet');
       setWalletData(response.data);
     } catch (err) {
-      const msg = axios.isAxiosError(err) && err.response?.data?.message
-        ? err.response.data.message
+      const msg = axios.isAxiosError(err) && err.response?.data?.error
+        ? err.response.data.error
         : 'Failed to load wallet data.';
       setError(`Error: ${msg}`);
     } finally {
@@ -53,6 +54,27 @@ function DropshipperWalletPage() {
   useEffect(() => {
     loadWalletData();
   }, [loadWalletData]);
+
+  // --- NEW: Handle Manual Top-Up ---
+  const handleTopUp = async () => {
+    const amountStr = prompt("Enter amount to Top-Up (Testing Mode):", "100.00");
+    if (!amountStr) return;
+
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Invalid amount");
+      return;
+    }
+
+    try {
+        await apiClient.post('/dropshipper/wallet/topup', { amount });
+        toast.success(`Successfully added RM ${amount.toFixed(2)}`);
+        loadWalletData(); // Refresh balance immediately
+    } catch (err) {
+        console.error(err);
+        toast.error("Top-up failed");
+    }
+  };
 
   // Helper function to format transaction date
   const formatDate = (dateString: string): string => {
@@ -82,16 +104,16 @@ function DropshipperWalletPage() {
       {/* Balance Summary Card */}
       <div className="bg-blue-600 text-white p-8 rounded-xl shadow-lg mb-8">
         <p className="text-sm opacity-80">Current Available Balance</p>
-        {/* FIX: Use correct camelCase property name */}
         <h2 className="text-5xl font-extrabold mt-1">
           RM {walletData.currentBalance?.toFixed(2) || '0.00'}
         </h2>
         
-        {/* REMOVED: "Total Credits Earned" because backend doesn't send it yet */}
-        
         <div className="mt-6">
-            <button className="bg-yellow-400 text-blue-900 font-bold py-2 px-4 rounded-lg hover:bg-yellow-500 transition duration-200">
-                + Top Up Wallet (Placeholder)
+            <button 
+                onClick={handleTopUp}
+                className="bg-yellow-400 text-blue-900 font-bold py-2 px-4 rounded-lg hover:bg-yellow-500 transition duration-200"
+            >
+                + Top Up Wallet (Test)
             </button>
         </div>
       </div>
@@ -117,7 +139,6 @@ function DropshipperWalletPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {walletData.transactions.map((tx) => (
                 <tr key={tx.id}>
-                  {/* FIX: Use 'createdAt' instead of 'timestamp' */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {formatDate(tx.createdAt)}
                   </td>
